@@ -1,0 +1,517 @@
+import * as vscode from 'vscode';
+import { Asset, Skill, Agent, Instruction, Workflow, Hook } from '../models/types';
+import { AssetLoader } from './assetLoader';
+
+/**
+ * Exports Agent Studio assets into GitHub Copilot's native .github/ folder structure.
+ *
+ * Mapping:
+ *   Skill       → .github/prompts/as-skill-<id>.prompt.md       (reusable Copilot prompt)
+ *   Agent       → .github/chatmodes/as-agent-<id>.chatmode.md   (custom chat mode / persona)
+ *   Instruction → .github/instructions/as-<id>.instructions.md  (auto-injected by file glob)
+ *   Workflow    → .github/prompts/as-workflow-<id>.prompt.md     (guided workflow prompt)
+ *   Hook+global → .github/copilot-instructions.md               (persistent repo-wide context)
+ *
+ * After export, Copilot natively reads all of these — no @agent-studio participant needed.
+ * Skills appear as /skill-name reusable prompts, agents as selectable chat modes.
+ */
+export class CopilotExporter {
+  constructor(private assetLoader: AssetLoader) {}
+
+  /**
+   * Export assets to .github/.
+   *
+   * @param activeIds When provided, only assets whose IDs are in this list are
+   *                  exported (use repo-scoped IDs from ScopeService). When
+   *                  omitted, all enabled assets are exported (legacy / manual
+   *                  "export all" use-case).
+   */
+  async exportAll(activeIds?: string[]): Promise<ExportResult> {
+    const root = this._getWorkspaceRoot();
+    if (!root) {
+      return { ok: false, error: 'No workspace folder is open. Open a project first.' };
+    }
+
+    const assets = this.assetLoader.getAll().filter(a => {
+      if (a.enabled !== 'enabled') return false;
+      if (activeIds) return activeIds.includes(a.id);
+      return true;
+    });
+
+    const skills       = assets.filter((a): a is Skill       => a.type === 'skill');
+    const agents       = assets.filter((a): a is Agent       => a.type === 'agent');
+    const instructions = assets.filter((a): a is Instruction => a.type === 'instruction');
+    const workflows    = assets.filter((a): a is Workflow    => a.type === 'workflow');
+    const hooks        = assets.filter((a): a is Hook        => a.type === 'hook');
+
+    // Ensure directories exist
+    const dirs = [
+      '.github',
+      '.github/prompts',
+      '.github/chatmodes',
+      '.github/instructions',
+    ];
+    for (const dir of dirs) {
+      await this._ensureDir(vscode.Uri.joinPath(root, dir));
+    }
+
+    const written: string[] = [];
+
+    // ── 1. .github/copilot-instructions.md ─────────────────────────────
+    //    Persistent context for every Copilot session in this repo.
+    //    Contains: global rules, hook behaviours, agent roster overview.
+    const mainContent = this._buildRepoInstructions(agents, instructions, hooks);
+    await this._write(root, '.github/copilot-instructions.md', mainContent);
+    written.push('.github/copilot-instructions.md');
+
+    // ── 2. .github/prompts/ ─────────────────────────────────────────────
+    //    Each .prompt.md appears as a reusable prompt in Copilot Chat.
+    //    Skills become on-demand expert prompts; workflows become guided sequences.
+
+    for (const skill of skills) {
+      const file = `.github/prompts/as-skill-${skill.id}.prompt.md`;
+      await this._write(root, file, this._buildSkillPrompt(skill));
+      written.push(file);
+    }
+
+    for (const workflow of workflows) {
+      const file = `.github/prompts/as-workflow-${workflow.id}.prompt.md`;
+      await this._write(root, file, this._buildWorkflowPrompt(workflow));
+      written.push(file);
+    }
+
+    // ── 3. .github/chatmodes/ ───────────────────────────────────────────
+    //    Each .chatmode.md defines a custom Copilot Chat mode (agent persona).
+    //    Users switch to it via the Copilot Chat mode selector.
+
+    for (const agent of agents) {
+      const file = `.github/chatmodes/as-agent-${agent.id}.chatmode.md`;
+      await this._write(root, file, this._buildAgentChatmode(agent));
+      written.push(file);
+    }
+
+    // ── 4. .github/instructions/ ────────────────────────────────────────
+    //    Each .instructions.md is auto-injected by Copilot when files
+    //    matching the `applyTo` glob are open/edited.
+
+    for (const inst of instructions) {
+      const file = `.github/instructions/as-inst-${inst.id}.instructions.md`;
+      await this._write(root, file, this._buildInstructionFile(inst));
+      written.push(file);
+    }
+
+    return { ok: true, written };
+  }
+
+  // ── File builders ────────────────────────────────────────────────────────
+
+  /**
+   * .github/copilot-instructions.md
+   * Persistent repo-wide context Copilot sees in every chat session.
+   */
+  private _buildRepoInstructions(
+    agents: Agent[],
+    instructions: Instruction[],
+    hooks: Hook[],
+  ): string {
+    const lines: string[] = [
+      `# Repository Copilot Instructions`,
+      ``,
+      `<!-- Generated by Agent Studio. Re-run "Agent Studio: Export to Copilot" to refresh. -->`,
+      ``,
+    ];
+
+    // Global instructions (highest priority first)
+    const globals = instructions
+      .filter(i => i.scope === 'global')
+      .sort((a, b) => b.priority - a.priority);
+
+    if (globals.length) {
+      lines.push(`## Global Rules`, ``);
+      for (const inst of globals) {
+        lines.push(`### ${inst.name}`, ``, inst.content.trim(), ``);
+      }
+    }
+
+    // Active agents — roster so Copilot knows they exist
+    if (agents.length) {
+      lines.push(
+        `## Active Agents`,
+        ``,
+        `The following agent personas are available as custom chat modes in this repository.`,
+        `Switch to them using the Copilot Chat mode selector, or reference them by name.`,
+        ``,
+      );
+      for (const agent of agents) {
+        lines.push(
+          `### ${agent.name}`,
+          `**Role:** ${agent.role}`,
+          ``,
+          agent.systemPrompt.trim(),
+          ``,
+        );
+      }
+    }
+
+    // Hooks — behavioural rules that fire at specific moments
+    const activeHooks = hooks.filter(h => h.enabled === 'enabled');
+    if (activeHooks.length) {
+      lines.push(`## Behavioural Hooks`, ``);
+      for (const hook of activeHooks) {
+        lines.push(
+          `### ${hook.name}`,
+          `**Triggers on:** \`${hook.trigger}\``,
+          ``,
+          hook.payload.trim(),
+          ``,
+        );
+      }
+    }
+
+    return lines.join('\n');
+  }
+
+  /**
+   * .github/prompts/as-skill-<id>.prompt.md
+   *
+   * Copilot reusable prompt. Appears in the prompt picker.
+   * `mode: agent` lets it use tools (codebase search, edit files, run commands).
+   */
+  private _buildSkillPrompt(skill: Skill): string {
+    // Determine tools based on skill type/tags
+    const tools = this._inferTools(skill.tags ?? []);
+
+    const lines: string[] = [
+      `---`,
+      `mode: 'agent'`,
+      `tools: [${tools.map(t => `'${t}'`).join(', ')}]`,
+      `description: '${this._escapeFrontmatter(skill.description)}'`,
+      `---`,
+      ``,
+      `# ${skill.name}`,
+      ``,
+      `> ${skill.description}`,
+      ``,
+      `## Instructions`,
+      ``,
+      skill.systemPrompt.trim(),
+      ``,
+    ];
+
+    if (skill.bestPractices?.length) {
+      lines.push(`## Best Practices`, ``);
+      lines.push(...skill.bestPractices.map(p => `- ${p}`), ``);
+    }
+
+    if (skill.userPromptTemplate) {
+      lines.push(
+        `## How to use`,
+        ``,
+        `Provide your code or context below. The following template guides the output:`,
+        ``,
+        '```',
+        skill.userPromptTemplate.trim(),
+        '```',
+        ``,
+      );
+    }
+
+    if (skill.examples?.length) {
+      lines.push(`## Examples`, ``);
+      for (const ex of skill.examples) {
+        lines.push(`**Example input:** ${ex.input}`, ``);
+      }
+    }
+
+    return lines.join('\n');
+  }
+
+  /**
+   * .github/chatmodes/as-agent-<id>.chatmode.md
+   *
+   * Custom Copilot Chat mode. The user switches to this mode via the
+   * chat mode selector and Copilot adopts the agent persona + tools.
+   */
+  private _buildAgentChatmode(agent: Agent): string {
+    // Resolve which skills this agent uses and embed their prompts inline
+    const agentSkillIds = (agent.capabilities ?? []).flatMap(c => c.skillIds ?? []);
+    const agentSkills = agentSkillIds
+      .map(id => this.assetLoader.getById(id))
+      .filter((s): s is Skill => s?.type === 'skill');
+
+    const tools = ['codebase', 'editFiles', 'runCommands', 'search', 'problems'];
+
+    const lines: string[] = [
+      `---`,
+      `description: '${this._escapeFrontmatter(agent.description)}'`,
+      `tools: [${tools.map(t => `'${t}'`).join(', ')}]`,
+      `---`,
+      ``,
+      `# ${agent.name}`,
+      `**Role:** ${agent.role}`,
+      ``,
+      `## Behaviour`,
+      ``,
+      agent.systemPrompt.trim(),
+      ``,
+    ];
+
+    if (agent.capabilities?.length) {
+      lines.push(`## Capabilities`, ``);
+      for (const cap of agent.capabilities) {
+        lines.push(`### ${cap.name}`, cap.description, ``);
+      }
+    }
+
+    if (agentSkills.length) {
+      lines.push(`## Skills available to this agent`, ``);
+      for (const skill of agentSkills) {
+        lines.push(
+          `### ${skill.name}`,
+          ``,
+          skill.systemPrompt.trim(),
+          ``,
+        );
+      }
+    }
+
+    return lines.join('\n');
+  }
+
+  /**
+   * .github/instructions/as-inst-<id>.instructions.md
+   *
+   * Auto-injected by Copilot when files matching `applyTo` are active.
+   * Language-scoped instructions only fire for their target file types.
+   */
+  private _buildInstructionFile(inst: Instruction): string {
+    let applyTo = '**';
+    if (inst.scope === 'language' && inst.languageIds?.length) {
+      const exts = inst.languageIds.map(l => LANG_TO_EXT[l] ?? l).join(',');
+      applyTo = `**/*.{${exts}}`;
+    }
+
+    return [
+      `---`,
+      `applyTo: "${applyTo}"`,
+      `---`,
+      ``,
+      `# ${inst.name}`,
+      ``,
+      `> ${inst.description}`,
+      ``,
+      inst.content.trim(),
+      ``,
+    ].join('\n');
+  }
+
+  /**
+   * .github/prompts/as-workflow-<id>.prompt.md
+   *
+   * Multi-step guided workflow as a reusable Copilot prompt.
+   * Running it walks Copilot through each phase and step.
+   */
+  private _buildWorkflowPrompt(workflow: Workflow): string {
+    const lines: string[] = [
+      `---`,
+      `mode: 'agent'`,
+      `tools: ['codebase', 'editFiles', 'runCommands', 'search', 'problems']`,
+      `description: '${this._escapeFrontmatter(workflow.description)}'`,
+      `---`,
+      ``,
+      `# Workflow: ${workflow.name}`,
+      ``,
+      `> ${workflow.description}`,
+      ``,
+      `**Phases:** ${workflow.phases.join(' → ')}`,
+      ``,
+      `When this workflow is invoked, work through each phase and step sequentially.`,
+      `Complete one step fully before moving to the next. Confirm with the user at phase boundaries.`,
+      ``,
+    ];
+
+    // Group steps by phase
+    const phaseOrder: string[] = [];
+    const phaseGroups = new Map<string, typeof workflow.steps>();
+    for (const step of workflow.steps) {
+      if (!phaseGroups.has(step.phase)) {
+        phaseGroups.set(step.phase, []);
+        phaseOrder.push(step.phase);
+      }
+      phaseGroups.get(step.phase)!.push(step);
+    }
+
+    for (const phase of phaseOrder) {
+      const steps = phaseGroups.get(phase)!;
+      lines.push(`## Phase: ${phase.charAt(0).toUpperCase() + phase.slice(1)}`, ``);
+      for (const step of steps) {
+        lines.push(
+          `### Step: ${step.name}`,
+          ``,
+          step.prompt.trim(),
+          ``,
+        );
+        if (step.agentId) {
+          lines.push(`*Handled by agent: \`${step.agentId}\`*`, ``);
+        }
+      }
+      lines.push(`---`, ``);
+    }
+
+    return lines.join('\n');
+  }
+
+  // ── Per-asset install/uninstall ─────────────────────────────────────────
+
+  /**
+   * Return the .github-relative file path an asset exports to, or `undefined`
+   * for assets that don't emit a dedicated file (hooks aggregate into
+   * `copilot-instructions.md`).
+   */
+  getAssetExportPath(asset: Asset): string | undefined {
+    switch (asset.type) {
+      case 'skill':       return `.github/prompts/as-skill-${asset.id}.prompt.md`;
+      case 'workflow':    return `.github/prompts/as-workflow-${asset.id}.prompt.md`;
+      case 'agent':       return `.github/chatmodes/as-agent-${asset.id}.chatmode.md`;
+      case 'instruction': return `.github/instructions/as-inst-${asset.id}.instructions.md`;
+      case 'hook':        return undefined; // aggregated into copilot-instructions.md
+      default:            return undefined;
+    }
+  }
+
+  /** Write a single asset's file (and refresh the aggregated copilot-instructions.md). */
+  async exportOne(assetId: string, activeIds: string[]): Promise<ExportResult> {
+    const root = this._getWorkspaceRoot();
+    if (!root) return { ok: false, error: 'No workspace folder is open.' };
+
+    const asset = this.assetLoader.getById(assetId);
+    if (!asset) return { ok: false, error: `Asset "${assetId}" not found.` };
+
+    // Ensure target dirs exist
+    for (const dir of ['.github', '.github/prompts', '.github/chatmodes', '.github/instructions']) {
+      await this._ensureDir(vscode.Uri.joinPath(root, dir));
+    }
+
+    const written: string[] = [];
+    const filePath = this.getAssetExportPath(asset);
+
+    if (filePath) {
+      const content = this._renderAssetFile(asset);
+      if (content !== undefined) {
+        await this._write(root, filePath, content);
+        written.push(filePath);
+      }
+    }
+
+    // Always refresh the aggregated instructions file so hooks/agents/instructions stay in sync
+    await this._refreshAggregatedInstructions(root, activeIds);
+    written.push('.github/copilot-instructions.md');
+
+    return { ok: true, written };
+  }
+
+  /** Remove a single asset's file (and refresh the aggregated copilot-instructions.md). */
+  async removeOne(assetId: string, activeIds: string[]): Promise<ExportResult> {
+    const root = this._getWorkspaceRoot();
+    if (!root) return { ok: false, error: 'No workspace folder is open.' };
+
+    const asset = this.assetLoader.getById(assetId);
+    if (!asset) return { ok: false, error: `Asset "${assetId}" not found.` };
+
+    const removed: string[] = [];
+    const filePath = this.getAssetExportPath(asset);
+    if (filePath) {
+      try {
+        await vscode.workspace.fs.delete(vscode.Uri.joinPath(root, filePath));
+        removed.push(filePath);
+      } catch { /* file already gone */ }
+    }
+
+    // Refresh aggregated file (excludes the just-uninstalled asset)
+    await this._refreshAggregatedInstructions(root, activeIds);
+    removed.push('.github/copilot-instructions.md');
+
+    return { ok: true, written: removed };
+  }
+
+  /** Render a single asset to its .github/ file body, or `undefined` if not applicable. */
+  private _renderAssetFile(asset: Asset): string | undefined {
+    switch (asset.type) {
+      case 'skill':       return this._buildSkillPrompt(asset);
+      case 'workflow':    return this._buildWorkflowPrompt(asset);
+      case 'agent':       return this._buildAgentChatmode(asset);
+      case 'instruction': return this._buildInstructionFile(asset);
+      default:            return undefined;
+    }
+  }
+
+  /** Rewrite `.github/copilot-instructions.md` based on the currently-installed asset ids. */
+  private async _refreshAggregatedInstructions(root: vscode.Uri, activeIds: string[]): Promise<void> {
+    const installed = this.assetLoader.getAll().filter(
+      (a) => a.enabled === 'enabled' && activeIds.includes(a.id),
+    );
+    const agents       = installed.filter((a): a is Agent       => a.type === 'agent');
+    const instructions = installed.filter((a): a is Instruction => a.type === 'instruction');
+    const hooks        = installed.filter((a): a is Hook        => a.type === 'hook');
+    const content = this._buildRepoInstructions(agents, instructions, hooks);
+    await this._write(root, '.github/copilot-instructions.md', content);
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
+  private _inferTools(tags: string[]): string[] {
+    const tools = new Set(['codebase']);
+    if (tags.some(t => ['review', 'refactoring', 'implementation', 'fix'].includes(t))) {
+      tools.add('editFiles');
+    }
+    if (tags.some(t => ['testing', 'tdd', 'lint'].includes(t))) {
+      tools.add('runCommands');
+      tools.add('problems');
+    }
+    if (tags.some(t => ['search', 'investigation', 'debugging'].includes(t))) {
+      tools.add('search');
+    }
+    return Array.from(tools);
+  }
+
+  private _escapeFrontmatter(str: string): string {
+    return str.replace(/'/g, "\\'").replace(/\n/g, ' ').slice(0, 120);
+  }
+
+  private _getWorkspaceRoot(): vscode.Uri | undefined {
+    return vscode.workspace.workspaceFolders?.[0]?.uri;
+  }
+
+  private async _ensureDir(uri: vscode.Uri): Promise<void> {
+    try { await vscode.workspace.fs.createDirectory(uri); } catch { /* exists */ }
+  }
+
+  private async _write(root: vscode.Uri, relativePath: string, content: string): Promise<void> {
+    const uri = vscode.Uri.joinPath(root, relativePath);
+    await vscode.workspace.fs.writeFile(uri, Buffer.from(content, 'utf-8'));
+  }
+}
+
+export interface ExportResult {
+  ok: boolean;
+  written?: string[];
+  error?: string;
+}
+
+const LANG_TO_EXT: Record<string, string> = {
+  typescript: 'ts',
+  typescriptreact: 'tsx',
+  javascript: 'js',
+  javascriptreact: 'jsx',
+  python: 'py',
+  go: 'go',
+  rust: 'rs',
+  java: 'java',
+  csharp: 'cs',
+  cpp: 'cpp',
+  c: 'c',
+  ruby: 'rb',
+  php: 'php',
+  swift: 'swift',
+  kotlin: 'kt',
+};

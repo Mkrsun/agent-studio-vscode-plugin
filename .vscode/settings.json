@@ -1,0 +1,11 @@
+{
+  "agentStudio.auth.bypassForDev": true,
+  "agentStudio.marketplaces": [
+    { "id": "regional",  "label": "Regional LatAm", "localPath": "/Users/macos/marketplace-repos/regional-marketplace" },
+    { "id": "chile",     "label": "Chile",           "localPath": "/Users/macos/marketplace-repos/chile-marketplace" },
+    { "id": "brasil",    "label": "Brasil",          "localPath": "/Users/macos/marketplace-repos/brasil-marketplace" },
+    { "id": "mexico",    "label": "México",          "localPath": "/Users/macos/marketplace-repos/mexico-marketplace" },
+    { "id": "argentina", "label": "Argentina",       "localPath": "/Users/macos/marketplace-repos/argentina-marketplace" },
+    { "id": "colombia",  "label": "Colombia",        "localPath": "/Users/macos/marketplace-repos/colombia-marketplace" }
+  ]
+}

@@ -1,0 +1,344 @@
+{
+  "name": "agent-studio",
+  "displayName": "Agent Studio",
+  "description": "GitHub Copilot agent framework with marketplace, asset library, and workflow visualizer",
+  "version": "0.1.0",
+  "publisher": "agent-studio",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "AI",
+    "Other"
+  ],
+  "icon": "media/icons/agent-studio.png",
+  "activationEvents": ["onStartupFinished"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "chatParticipants": [
+      {
+        "id": "agent-studio.assistant",
+        "name": "agent-studio",
+        "fullName": "Agent Studio",
+        "description": "Guides you through AI-assisted workflows: discovery, planning, implementation",
+        "isSticky": true,
+        "commands": [
+          {
+            "name": "discover",
+            "description": "Start the discovery phase — understand goals and constraints before coding"
+          },
+          {
+            "name": "plan",
+            "description": "Generate a structured implementation plan with tasks, files, and complexity"
+          },
+          {
+            "name": "implement",
+            "description": "Execute the implementation phase with selected agents and skills"
+          },
+          {
+            "name": "workflow",
+            "description": "Run a named workflow end-to-end (e.g. /workflow full-feature-workflow)"
+          },
+          {
+            "name": "review",
+            "description": "Review generated or existing code against requirements and best practices"
+          },
+          {
+            "name": "skill",
+            "description": "Apply a specific skill — e.g. /skill code-review, /skill test-generator (run /skill alone to list all)"
+          },
+          {
+            "name": "agent",
+            "description": "Adopt an agent persona — e.g. /agent feature-builder, /agent bug-investigator (run /agent alone to list all)"
+          }
+        ]
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "agent-studio-sidebar",
+          "title": "Agent Studio",
+          "icon": "media/icons/agent-studio.svg"
+        }
+      ]
+    },
+    "views": {
+      "agent-studio-sidebar": [
+        {
+          "id": "agentStudio.assetLibrary",
+          "name": "Asset Library",
+          "type": "tree"
+        },
+        {
+          "id": "agentStudio.activeWorkflows",
+          "name": "Active Workflows",
+          "type": "tree"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "agentStudio.openMarketplace",
+        "title": "Agent Studio: Open Marketplace",
+        "icon": "$(extensions)"
+      },
+      {
+        "command": "agentStudio.openVisualizer",
+        "title": "Agent Studio: Open Agent Visualizer",
+        "icon": "$(type-hierarchy)"
+      },
+      {
+        "command": "agentStudio.refreshLibrary",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "agentStudio.enableAsset",
+        "title": "Install",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "agentStudio.disableAsset",
+        "title": "Uninstall",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "agentStudio.injectAsset",
+        "title": "Inject into Chat",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "agentStudio.previewAsset",
+        "title": "Preview Asset",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "agentStudio.installAsset",
+        "title": "Install to Workspace"
+      },
+      {
+        "command": "agentStudio.uninstallAsset",
+        "title": "Uninstall from Workspace"
+      },
+      {
+        "command": "agentStudio.exportToCopilot",
+        "title": "Agent Studio: Export to Copilot",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "agentStudio.installPlugin",
+        "title": "Install Plugin",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "agentStudio.uninstallPlugin",
+        "title": "Uninstall Plugin",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "agentStudio.signIn",
+        "title": "Agent Studio: Sign In with GitHub",
+        "icon": "$(sign-in)"
+      },
+      {
+        "command": "agentStudio.signOut",
+        "title": "Agent Studio: Sign Out",
+        "icon": "$(sign-out)"
+      },
+      {
+        "command": "agentStudio.showAuthStatus",
+        "title": "Agent Studio: Show Auth Status"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "agentStudio.refreshLibrary",
+          "when": "view == agentStudio.assetLibrary && agentStudio.authenticated",
+          "group": "navigation"
+        },
+        {
+          "command": "agentStudio.openMarketplace",
+          "when": "view == agentStudio.assetLibrary && agentStudio.authenticated",
+          "group": "navigation"
+        },
+        {
+          "command": "agentStudio.exportToCopilot",
+          "when": "view == agentStudio.assetLibrary && agentStudio.authenticated",
+          "group": "navigation"
+        },
+        {
+          "command": "agentStudio.openVisualizer",
+          "when": "view == agentStudio.activeWorkflows && agentStudio.authenticated",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "agentStudio.enableAsset",
+          "when": "viewItem == asset-available && agentStudio.authenticated",
+          "group": "inline",
+          "icon": "$(cloud-download)"
+        },
+        {
+          "command": "agentStudio.disableAsset",
+          "when": "viewItem == asset-installed && agentStudio.authenticated",
+          "group": "inline",
+          "icon": "$(trash)"
+        },
+        {
+          "command": "agentStudio.injectAsset",
+          "when": "(viewItem == asset-available || viewItem == asset-installed) && agentStudio.authenticated",
+          "group": "inline",
+          "icon": "$(comment-discussion)"
+        },
+        {
+          "command": "agentStudio.previewAsset",
+          "when": "(viewItem == asset-available || viewItem == asset-installed) && agentStudio.authenticated",
+          "group": "1_actions"
+        },
+        {
+          "command": "agentStudio.installPlugin",
+          "when": "viewItem == plugin-not-installed && agentStudio.authenticated",
+          "group": "inline"
+        },
+        {
+          "command": "agentStudio.uninstallPlugin",
+          "when": "viewItem == plugin-installed && agentStudio.authenticated",
+          "group": "inline"
+        }
+      ],
+      "commandPalette": [
+        { "command": "agentStudio.signIn",          "when": "!agentStudio.authenticated" },
+        { "command": "agentStudio.signOut",         "when": "agentStudio.authenticated" },
+        { "command": "agentStudio.showAuthStatus" },
+        { "command": "agentStudio.openMarketplace", "when": "agentStudio.authenticated" },
+        { "command": "agentStudio.openVisualizer",  "when": "agentStudio.authenticated" },
+        { "command": "agentStudio.exportToCopilot", "when": "agentStudio.authenticated" },
+        { "command": "agentStudio.refreshLibrary",  "when": "agentStudio.authenticated" },
+        { "command": "agentStudio.enableAsset",     "when": "agentStudio.authenticated" },
+        { "command": "agentStudio.disableAsset",    "when": "agentStudio.authenticated" },
+        { "command": "agentStudio.injectAsset",     "when": "agentStudio.authenticated" },
+        { "command": "agentStudio.previewAsset",    "when": "agentStudio.authenticated" },
+        { "command": "agentStudio.installAsset",    "when": "agentStudio.authenticated" },
+        { "command": "agentStudio.uninstallAsset",  "when": "agentStudio.authenticated" },
+        { "command": "agentStudio.installPlugin",   "when": "agentStudio.authenticated" },
+        { "command": "agentStudio.uninstallPlugin", "when": "agentStudio.authenticated" }
+      ]
+    },
+    "configuration": {
+      "title": "Agent Studio",
+      "properties": {
+        "agentStudio.marketplaces": {
+          "type": "array",
+          "description": "Configured marketplaces. Each entry must have an 'id', 'label', and either 'repo' (GitHub owner/repo) or 'localPath' (absolute path, dev only).",
+          "items": {
+            "type": "object",
+            "required": ["id", "label"],
+            "properties": {
+              "id":        { "type": "string", "description": "Unique marketplace identifier (e.g. 'chile')." },
+              "label":     { "type": "string", "description": "Display name shown in the Asset Library tree and Marketplace." },
+              "repo":      { "type": "string", "description": "GitHub repo in 'owner/repo' form. Fetched via GitHub Contents API." },
+              "localPath": { "type": "string", "description": "[DEV] Absolute filesystem path to a local marketplace directory." }
+            }
+          },
+          "default": [
+            { "id": "regional", "label": "Regional LatAm",  "repo": "MetLife-Global/regional-marketplace" },
+            { "id": "chile",    "label": "Chile",            "repo": "MetLife-Global/chile-marketplace" },
+            { "id": "brasil",   "label": "Brasil",           "repo": "MetLife-Global/brasil-marketplace" },
+            { "id": "mexico",   "label": "México",           "repo": "MetLife-Global/mexico-marketplace" },
+            { "id": "argentina","label": "Argentina",        "repo": "MetLife-Global/argentina-marketplace" },
+            { "id": "colombia", "label": "Colombia",         "repo": "MetLife-Global/colombia-marketplace" }
+          ]
+        },
+        "agentStudio.workspaceAssetsFolder": {
+          "type": "string",
+          "default": ".agent-studio",
+          "description": "Workspace-relative folder for installed/custom assets."
+        },
+        "agentStudio.enabledAssets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "List of explicitly enabled asset IDs (overrides bundled defaults)."
+        },
+        "agentStudio.disabledAssets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "List of explicitly disabled asset IDs (overrides bundled defaults)."
+        },
+        "agentStudio.autoInjectEnabledAssets": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically inject enabled assets into every @agent-studio request."
+        },
+        "agentStudio.defaultWorkflow": {
+          "type": "string",
+          "default": "full-feature-workflow",
+          "description": "Default workflow ID to run when no specific workflow is matched."
+        },
+        "agentStudio.visualizerAutoOpen": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically open the Agent Visualizer panel when a workflow starts."
+        },
+        "agentStudio.maxContextAssets": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 20,
+          "description": "Maximum number of assets injected into a single chat context."
+        },
+        "agentStudio.repoScopedAssets": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Asset IDs permanently active for this repo — exported to .github/ for all Copilot features.",
+          "scope": "resource"
+        },
+        "agentStudio.auth.requiredGitHubOrgs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["MetLife-Global"],
+          "description": "GitHub organizations that grant access to Agent Studio. User must be an active member of at least one. Add additional MetLife orgs here (e.g. MetLife-LatAm) as needed."
+        },
+        "agentStudio.auth.bypassForDev": {
+          "type": "boolean",
+          "default": false,
+          "description": "[DEV ONLY] Skip authentication gating. Has effect ONLY when VS Code runs in Extension Development mode (F5 from source); ignored in production-installed .vsix."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build:prod",
+    "build": "node esbuild.mjs",
+    "build:prod": "node esbuild.mjs --production",
+    "watch": "node esbuild.mjs --watch",
+    "lint": "eslint src --ext ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vscode-test",
+    "package:vsix": "vsce package --no-dependencies -o dist/agent-studio-$npm_package_version.vsix",
+    "release": "gh release create v$npm_package_version dist/agent-studio-$npm_package_version.vsix --repo MetLife-Global/agent-studio-vscode-plugin --notes-file RELEASE_NOTES.md"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.1",
+    "mermaid": "^11.14.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.4.0"
+  }
+}
