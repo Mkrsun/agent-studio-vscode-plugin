@@ -331,17 +331,21 @@
     "build:prod": "node esbuild.mjs --production",
     "watch": "node esbuild.mjs --watch",
     "lint": "eslint src --ext ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p webview-ui/tsconfig.json --noEmit",
     "test": "vscode-test",
     "package:vsix": "vsce package --no-dependencies -o dist/agent-studio-$npm_package_version.vsix",
     "release": "gh release create v$npm_package_version dist/agent-studio-$npm_package_version.vsix --repo MetLife-Global/agent-studio-vscode-plugin --notes-file RELEASE_NOTES.md"
   },
   "dependencies": {
-    "js-yaml": "^4.1.1"
+    "js-yaml": "^4.1.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.0.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
     "@types/vscode": "^1.90.0",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",

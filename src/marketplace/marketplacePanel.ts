@@ -384,76 +384,8 @@ export class MarketplacePanel {
   <title>Agent Studio Marketplace</title>
 </head>
 <body>
-<div id="app">
-  <header class="mp-header">
-    <div class="mp-header__top">
-      <span class="mp-header__icon">◈</span>
-      <h1>Agent Studio Marketplace</h1>
-    </div>
-    <div class="mp-header__controls" id="searchRow">
-      <input type="text" id="searchInput" class="mp-search" placeholder="Search assets…" autocomplete="off">
-      <select id="typeFilter" class="mp-filter">
-        <option value="all">All Types</option>
-        <option value="skill">Skills</option>
-        <option value="agent">Agents</option>
-        <option value="workflow">Workflows</option>
-        <option value="instruction">Instructions</option>
-        <option value="hook">Hooks</option>
-      </select>
-    </div>
-    <div class="mp-tabs">
-      <button class="mp-tab active" data-tab="panelAssets">AI Assets</button>
-      <button class="mp-tab" data-tab="panelPlugins">Plugins</button>
-      <button class="mp-tab" data-tab="panelMcp">MCP Servers</button>
-      <button class="mp-tab" data-tab="panelExtensions">Copilot Extensions</button>
-    </div>
-  </header>
-
-  <!-- Tab: AI Assets -->
-  <div id="panelAssets" class="mp-panel visible">
-    <div id="assetsGrid" class="mp-grid">
-      <div class="mp-loading">Loading assets…</div>
-    </div>
-  </div>
-
-  <!-- Tab: Plugins (GitHub Copilot CLI plugin packages) -->
-  <div id="panelPlugins" class="mp-panel">
-    <div class="mp-plugin-toolbar">
-      <p class="mp-subtitle">
-        Installable packages that bundle agents, skills, hooks and MCP configs.
-        Requires <code>copilot</code> CLI. Installed via <code>copilot plugin install</code>.
-      </p>
-      <div style="display:flex;gap:8px;align-items:center;">
-        <button class="btn btn-secondary" id="btnAddMarketplace">+ Add Marketplace</button>
-        <button class="btn btn-secondary" id="btnRefreshPlugins">↻ Refresh</button>
-      </div>
-    </div>
-    <div id="pluginsContainer">
-      <div class="mp-loading">Fetching marketplaces…</div>
-    </div>
-  </div>
-
-  <!-- Tab: MCP Servers -->
-  <div id="panelMcp" class="mp-panel">
-    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
-      MCP (Model Context Protocol) servers extend Copilot with tools — file access, GitHub, databases,
-      search, and more. Installed to <code>.vscode/mcp.json</code> in your workspace.
-    </p>
-    <div id="mcpGrid" class="mp-grid">
-      <div class="mp-loading">Loading MCP catalog…</div>
-    </div>
-  </div>
-
-  <!-- Tab: Copilot Extensions -->
-  <div id="panelExtensions" class="mp-panel">
-    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
-      GitHub Copilot Extensions are GitHub Apps that add <code>@extension-name</code> participants
-      to your Copilot Chat. Install them on GitHub.com and they appear automatically.
-    </p>
-    <div id="extensionsGrid"></div>
-  </div>
-</div>
-<script nonce="${nonce}" src="${js}"></script>
+  <div id="root"></div>
+  <script nonce="${nonce}" src="${js}"></script>
 </body>
 </html>`;
   }
