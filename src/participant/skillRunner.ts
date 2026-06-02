@@ -266,7 +266,7 @@ export class SkillRunner {
       );
     }
     stream.markdown(
-      `\n💡 **Tip:** Enable a skill in the Asset Library sidebar to auto-inject it into ` +
+      `\n💡 **Tip:** Enable a skill in the Inspector sidebar to auto-inject it into ` +
       `every request, or invoke it explicitly with \`/skill <id>\`.`,
     );
     return { metadata: { command: 'skill' } };

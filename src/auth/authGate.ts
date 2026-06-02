@@ -2,14 +2,14 @@ import * as vscode from 'vscode';
 import { ConfigService } from '../services/configService';
 import { AssetLoader } from '../services/assetLoader';
 import { ScopeService } from '../services/scopeService';
-import { LibraryProvider } from '../library/libraryProvider';
+import { InspectorProvider } from '../inspector/inspectorProvider';
 import { registerParticipant } from '../participant/agentParticipant';
-import { registerLibraryCommands } from '../library/libraryCommands';
+import { registerInspectorCommands } from '../inspector/inspectorCommands';
 import { MarketplacePanel, MarketplacePreFilter } from '../marketplace/marketplacePanel';
 import { CopilotExporter } from '../services/copilotExporter';
 import { McpInstaller } from '../marketplace/mcpInstaller';
 import { PluginRegistry } from '../marketplace/pluginRegistry';
-import { InstalledPluginNode } from '../library/libraryTreeItem';
+import { InstalledPluginNode } from '../inspector/inspectorTreeItem';
 import { AssetInstaller } from '../marketplace/installer';
 import { MarketplaceService } from '../marketplace/marketplaceService';
 import { COMMANDS, VIEW_IDS } from '../constants';
@@ -53,31 +53,31 @@ export async function registerAuthenticatedSurface(
     marketplaceService.onDidChangeCatalog(() => void assetLoader.loadAll()),
   );
 
-  // ── TreeView: Asset Library ───────────────────────────────────────────────
-  const libraryProvider = new LibraryProvider(
+  // ── TreeView: Inspector (asset-hierarchy navigator) ───────────────────────
+  const inspectorProvider = new InspectorProvider(
     assetLoader,
     scopeService,
     pluginRegistry,
     mcpInstaller,
     marketplaceService,
   );
-  const libraryTreeView = vscode.window.createTreeView(VIEW_IDS.ASSET_LIBRARY, {
-    treeDataProvider: libraryProvider,
+  const inspectorTreeView = vscode.window.createTreeView(VIEW_IDS.INSPECTOR, {
+    treeDataProvider: inspectorProvider,
     showCollapseAll: true,
   });
-  disposables.push(libraryTreeView);
+  disposables.push(inspectorTreeView);
 
   // ── Chat Participant ──────────────────────────────────────────────────────
   disposables.push(
     registerParticipant(context, assetLoader, scopeService, configService, authService),
   );
 
-  // ── Library Commands ──────────────────────────────────────────────────────
+  // ── Inspector Commands ────────────────────────────────────────────────────
   disposables.push(
-    ...registerLibraryCommands(
+    ...registerInspectorCommands(
       context,
       assetLoader,
-      libraryProvider,
+      inspectorProvider,
       configService,
       scopeService,
       copilotExporter,

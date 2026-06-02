@@ -6,7 +6,7 @@ import { InstalledPluginRecord, PLUGIN_TYPE_LABELS, DOC_LABELS } from '../market
 import { McpServerDefinition } from '../marketplace/mcpInstaller';
 import { ResolvedMarketplace, MarketplaceStatus } from '../marketplace/marketplaceTypes';
 
-export abstract class LibraryNode {
+export abstract class InspectorNode {
   abstract toTreeItem(): vscode.TreeItem;
 }
 
@@ -28,7 +28,7 @@ const STATUS_DESCRIPTIONS: Record<MarketplaceStatus, string> = {
   malformed: 'Invalid registry',
 };
 
-export class MarketplaceGroupNode extends LibraryNode {
+export class MarketplaceGroupNode extends InspectorNode {
   constructor(public readonly marketplace: ResolvedMarketplace) {
     super();
   }
@@ -63,7 +63,7 @@ export class MarketplaceGroupNode extends LibraryNode {
 // ── Plugin nodes (GitHub Copilot CLI plugins) ─────────────────────────────
 
 /** Root category node for the Plugins section in the sidebar. */
-export class PluginCategoryNode extends LibraryNode {
+export class PluginCategoryNode extends InspectorNode {
   toTreeItem(): vscode.TreeItem {
     const item = new vscode.TreeItem(
       ASSET_TYPE_LABELS['plugin'],
@@ -94,7 +94,7 @@ const COMPONENT_ICONS: Record<string, string> = {
 };
 
 /** Node for a single installed plugin. */
-export class InstalledPluginNode extends LibraryNode {
+export class InstalledPluginNode extends InspectorNode {
   constructor(public readonly record: InstalledPluginRecord) {
     super();
   }
@@ -172,7 +172,7 @@ export class InstalledPluginNode extends LibraryNode {
 }
 
 /** Shown when no plugins are installed yet. */
-export class NoPluginsNode extends LibraryNode {
+export class NoPluginsNode extends InspectorNode {
   toTreeItem(): vscode.TreeItem {
     const item = new vscode.TreeItem('No plugins installed');
     item.description = 'Open Marketplace → Plugins to browse';
@@ -186,7 +186,7 @@ export class NoPluginsNode extends LibraryNode {
   }
 }
 
-export class CategoryNode extends LibraryNode {
+export class CategoryNode extends InspectorNode {
   constructor(
     public readonly assetType: AssetType,
     public readonly marketplaceId?: string,
@@ -210,7 +210,7 @@ export class CategoryNode extends LibraryNode {
 }
 
 /** Root category node for the MCP Servers section in the sidebar. */
-export class McpCategoryNode extends LibraryNode {
+export class McpCategoryNode extends InspectorNode {
   toTreeItem(): vscode.TreeItem {
     const item = new vscode.TreeItem(
       ASSET_TYPE_LABELS['mcp-server'],
@@ -233,7 +233,7 @@ export class McpCategoryNode extends LibraryNode {
 }
 
 /** Shown when no MCP servers are installed yet. */
-export class NoMcpNode extends LibraryNode {
+export class NoMcpNode extends InspectorNode {
   toTreeItem(): vscode.TreeItem {
     const item = new vscode.TreeItem('No MCP servers installed');
     item.description = 'Open Marketplace → MCP Servers to browse';
@@ -248,7 +248,7 @@ export class NoMcpNode extends LibraryNode {
 }
 
 /** Node for a single installed MCP server. */
-export class InstalledMcpNode extends LibraryNode {
+export class InstalledMcpNode extends InspectorNode {
   constructor(public readonly server: McpServerDefinition) {
     super();
   }
@@ -282,7 +282,7 @@ export class InstalledMcpNode extends LibraryNode {
   }
 }
 
-export class AssetNode extends LibraryNode {
+export class AssetNode extends InspectorNode {
   constructor(
     public readonly asset: Asset,
     public readonly scope: AssetScope,

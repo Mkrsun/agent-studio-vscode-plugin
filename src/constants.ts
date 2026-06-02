@@ -7,7 +7,7 @@ export const WORKSPACE_FOLDER = '.agent-studio';
 
 export const COMMANDS = {
   OPEN_MARKETPLACE: 'agentStudio.openMarketplace',
-  REFRESH_LIBRARY: 'agentStudio.refreshLibrary',
+  REFRESH_INSPECTOR: 'agentStudio.refreshInspector',
   ENABLE_ASSET: 'agentStudio.enableAsset',
   DISABLE_ASSET: 'agentStudio.disableAsset',
   INJECT_ASSET: 'agentStudio.injectAsset',
@@ -27,7 +27,7 @@ export const CONTEXT_KEYS = {
 } as const;
 
 export const VIEW_IDS = {
-  ASSET_LIBRARY: 'agentStudio.assetLibrary',
+  INSPECTOR: 'agentStudio.inspector',
 } as const;
 
 export const CONFIG_KEYS = {

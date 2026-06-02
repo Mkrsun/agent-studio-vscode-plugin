@@ -66,8 +66,8 @@
     "views": {
       "agent-studio-sidebar": [
         {
-          "id": "agentStudio.assetLibrary",
-          "name": "Asset Library",
+          "id": "agentStudio.inspector",
+          "name": "Inspector",
           "type": "tree"
         }
       ]
@@ -79,7 +79,7 @@
         "icon": "$(extensions)"
       },
       {
-        "command": "agentStudio.refreshLibrary",
+        "command": "agentStudio.refreshInspector",
         "title": "Refresh",
         "icon": "$(refresh)"
       },
@@ -144,18 +144,18 @@
     "menus": {
       "view/title": [
         {
-          "command": "agentStudio.refreshLibrary",
-          "when": "view == agentStudio.assetLibrary && agentStudio.authenticated",
+          "command": "agentStudio.refreshInspector",
+          "when": "view == agentStudio.inspector && agentStudio.authenticated",
           "group": "navigation"
         },
         {
           "command": "agentStudio.openMarketplace",
-          "when": "view == agentStudio.assetLibrary && agentStudio.authenticated",
+          "when": "view == agentStudio.inspector && agentStudio.authenticated",
           "group": "navigation"
         },
         {
           "command": "agentStudio.exportToCopilot",
-          "when": "view == agentStudio.assetLibrary && agentStudio.authenticated",
+          "when": "view == agentStudio.inspector && agentStudio.authenticated",
           "group": "navigation"
         }
       ],
@@ -200,7 +200,7 @@
         { "command": "agentStudio.showAuthStatus" },
         { "command": "agentStudio.openMarketplace", "when": "agentStudio.authenticated" },
         { "command": "agentStudio.exportToCopilot", "when": "agentStudio.authenticated" },
-        { "command": "agentStudio.refreshLibrary",  "when": "agentStudio.authenticated" },
+        { "command": "agentStudio.refreshInspector",  "when": "agentStudio.authenticated" },
         { "command": "agentStudio.enableAsset",     "when": "agentStudio.authenticated" },
         { "command": "agentStudio.disableAsset",    "when": "agentStudio.authenticated" },
         { "command": "agentStudio.injectAsset",     "when": "agentStudio.authenticated" },
@@ -222,7 +222,7 @@
             "required": ["id", "label"],
             "properties": {
               "id":        { "type": "string", "description": "Unique marketplace identifier (e.g. 'chile')." },
-              "label":     { "type": "string", "description": "Display name shown in the Asset Library tree and Marketplace." },
+              "label":     { "type": "string", "description": "Display name shown in the Inspector tree and Marketplace." },
               "repo":      { "type": "string", "description": "GitHub repo in 'owner/repo' form. Fetched via GitHub Contents API." },
               "localPath": { "type": "string", "description": "[DEV] Absolute filesystem path to a local marketplace directory." }
             }

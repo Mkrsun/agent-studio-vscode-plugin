@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { AssetLoader } from '../services/assetLoader';
-import { LibraryProvider } from './libraryProvider';
-import { AssetNode } from './libraryTreeItem';
+import { InspectorProvider } from './inspectorProvider';
+import { AssetNode } from './inspectorTreeItem';
 import { ConfigService } from '../services/configService';
 import { ScopeService, AssetScope } from '../services/scopeService';
 import { CopilotExporter } from '../services/copilotExporter';
@@ -9,10 +9,10 @@ import { COMMANDS } from '../constants';
 import { Workflow } from '../models/types';
 import { MarketplaceService } from '../marketplace/marketplaceService';
 
-export function registerLibraryCommands(
+export function registerInspectorCommands(
   context: vscode.ExtensionContext,
   assetLoader: AssetLoader,
-  libraryProvider: LibraryProvider,
+  inspectorProvider: InspectorProvider,
   configService: ConfigService,
   scopeService: ScopeService,
   copilotExporter: CopilotExporter,
@@ -21,10 +21,10 @@ export function registerLibraryCommands(
   return [
 
     // ── Refresh ─────────────────────────────────────────────────────────────
-    vscode.commands.registerCommand(COMMANDS.REFRESH_LIBRARY, async () => {
+    vscode.commands.registerCommand(COMMANDS.REFRESH_INSPECTOR, async () => {
       await marketplaceService.refresh();
       await assetLoader.loadAll();
-      libraryProvider.refresh();
+      inspectorProvider.refresh();
     }),
 
     // ── Install to .github/ ──────────────────────────────────────────────────
