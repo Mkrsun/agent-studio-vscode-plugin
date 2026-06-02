@@ -1,7 +1,7 @@
 {
   "name": "agent-studio",
   "displayName": "Agent Studio",
-  "description": "GitHub Copilot agent framework with marketplace, asset library, and workflow visualizer",
+  "description": "GitHub Copilot agent framework: marketplace web UI + asset inspector (sidebar navigator) + multi-phase chat workflows",
   "version": "0.1.0",
   "publisher": "agent-studio",
   "engines": {
@@ -69,11 +69,6 @@
           "id": "agentStudio.assetLibrary",
           "name": "Asset Library",
           "type": "tree"
-        },
-        {
-          "id": "agentStudio.activeWorkflows",
-          "name": "Active Workflows",
-          "type": "tree"
         }
       ]
     },
@@ -82,11 +77,6 @@
         "command": "agentStudio.openMarketplace",
         "title": "Agent Studio: Open Marketplace",
         "icon": "$(extensions)"
-      },
-      {
-        "command": "agentStudio.openVisualizer",
-        "title": "Agent Studio: Open Agent Visualizer",
-        "icon": "$(type-hierarchy)"
       },
       {
         "command": "agentStudio.refreshLibrary",
@@ -167,11 +157,6 @@
           "command": "agentStudio.exportToCopilot",
           "when": "view == agentStudio.assetLibrary && agentStudio.authenticated",
           "group": "navigation"
-        },
-        {
-          "command": "agentStudio.openVisualizer",
-          "when": "view == agentStudio.activeWorkflows && agentStudio.authenticated",
-          "group": "navigation"
         }
       ],
       "view/item/context": [
@@ -214,7 +199,6 @@
         { "command": "agentStudio.signOut",         "when": "agentStudio.authenticated" },
         { "command": "agentStudio.showAuthStatus" },
         { "command": "agentStudio.openMarketplace", "when": "agentStudio.authenticated" },
-        { "command": "agentStudio.openVisualizer",  "when": "agentStudio.authenticated" },
         { "command": "agentStudio.exportToCopilot", "when": "agentStudio.authenticated" },
         { "command": "agentStudio.refreshLibrary",  "when": "agentStudio.authenticated" },
         { "command": "agentStudio.enableAsset",     "when": "agentStudio.authenticated" },
@@ -283,11 +267,6 @@
           "default": "full-feature-workflow",
           "description": "Default workflow ID to run when no specific workflow is matched."
         },
-        "agentStudio.visualizerAutoOpen": {
-          "type": "boolean",
-          "default": true,
-          "description": "Automatically open the Agent Visualizer panel when a workflow starts."
-        },
         "agentStudio.maxContextAssets": {
           "type": "number",
           "default": 5,
@@ -328,8 +307,7 @@
     "release": "gh release create v$npm_package_version dist/agent-studio-$npm_package_version.vsix --repo MetLife-Global/agent-studio-vscode-plugin --notes-file RELEASE_NOTES.md"
   },
   "dependencies": {
-    "js-yaml": "^4.1.1",
-    "mermaid": "^11.14.0"
+    "js-yaml": "^4.1.1"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",

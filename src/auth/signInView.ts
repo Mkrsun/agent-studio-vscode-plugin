@@ -66,11 +66,8 @@ export function registerSignInViews(authService: AuthService): vscode.Disposable
   const library = vscode.window.createTreeView(VIEW_IDS.ASSET_LIBRARY, {
     treeDataProvider: provider,
   });
-  const workflows = vscode.window.createTreeView(VIEW_IDS.ACTIVE_WORKFLOWS, {
-    treeDataProvider: provider,
-  });
 
   const stateListener = authService.onDidChangeAuthState(() => provider.refresh());
 
-  return [library, workflows, stateListener];
+  return [library, stateListener];
 }

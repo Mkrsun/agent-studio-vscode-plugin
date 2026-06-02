@@ -2,12 +2,10 @@ import * as vscode from 'vscode';
 import { ConfigService } from '../services/configService';
 import { AssetLoader } from '../services/assetLoader';
 import { ScopeService } from '../services/scopeService';
-import { ExecutionTracker } from '../visualizer/executionTracker';
 import { LibraryProvider } from '../library/libraryProvider';
 import { registerParticipant } from '../participant/agentParticipant';
 import { registerLibraryCommands } from '../library/libraryCommands';
 import { MarketplacePanel, MarketplacePreFilter } from '../marketplace/marketplacePanel';
-import { InspectorPanel } from '../inspector/inspectorPanel';
 import { CopilotExporter } from '../services/copilotExporter';
 import { McpInstaller } from '../marketplace/mcpInstaller';
 import { PluginRegistry } from '../marketplace/pluginRegistry';
@@ -43,7 +41,6 @@ export async function registerAuthenticatedSurface(
 
   const assetLoader = new AssetLoader(context, configService, marketplaceService);
   const scopeService = new ScopeService(context);
-  const executionTracker = new ExecutionTracker();
   const copilotExporter = new CopilotExporter(assetLoader);
   const mcpInstaller = new McpInstaller();
   const pluginRegistry = new PluginRegistry(context);
@@ -70,37 +67,9 @@ export async function registerAuthenticatedSurface(
   });
   disposables.push(libraryTreeView);
 
-  // ── TreeView: Active Workflows ────────────────────────────────────────────
-  const workflowProvider = new vscode.EventEmitter<void>();
-  const workflowTreeView = vscode.window.createTreeView(VIEW_IDS.ACTIVE_WORKFLOWS, {
-    treeDataProvider: {
-      onDidChangeTreeData: workflowProvider.event,
-      getTreeItem: (item: vscode.TreeItem) => item,
-      getChildren: () => {
-        const latest = executionTracker.getLatest();
-        if (!latest) {
-          const item = new vscode.TreeItem('No active workflow');
-          item.description = 'Start one with @agent-studio /workflow';
-          return [item];
-        }
-        const root = new vscode.TreeItem(
-          latest.workflowName,
-          vscode.TreeItemCollapsibleState.None,
-        );
-        root.description = latest.status;
-        root.iconPath = new vscode.ThemeIcon(
-          latest.status === 'running' ? 'loading~spin' : 'pass',
-        );
-        return [root];
-      },
-    },
-  });
-  disposables.push(workflowTreeView);
-  disposables.push(executionTracker.onExecutionUpdate(() => workflowProvider.fire()));
-
   // ── Chat Participant ──────────────────────────────────────────────────────
   disposables.push(
-    registerParticipant(context, assetLoader, scopeService, executionTracker, configService, authService),
+    registerParticipant(context, assetLoader, scopeService, configService, authService),
   );
 
   // ── Library Commands ──────────────────────────────────────────────────────
@@ -132,9 +101,6 @@ export async function registerAuthenticatedSurface(
         );
       },
     ),
-    vscode.commands.registerCommand(COMMANDS.OPEN_VISUALIZER, () => {
-      InspectorPanel.createOrShow(context, executionTracker, pluginRegistry);
-    }),
     vscode.commands.registerCommand(COMMANDS.EXPORT_TO_COPILOT, async () => {
       await vscode.window.withProgress(
         {
@@ -188,17 +154,6 @@ export async function registerAuthenticatedSurface(
 
   // Dispose scope service when surface tears down
   disposables.push(scopeService);
-
-  // Auto-open visualizer when a workflow starts
-  disposables.push(
-    executionTracker.onExecutionUpdate((execution) => {
-      if (execution.status === 'running' && !execution.currentStepId) {
-        if (configService.get('agentStudio.visualizerAutoOpen')) {
-          InspectorPanel.createOrShow(context, executionTracker, pluginRegistry);
-        }
-      }
-    }),
-  );
 
   // ── Update check (fire-and-forget; throttled internally) ──────────────────
   const currentVersion = (context.extension?.packageJSON as { version?: string } | undefined)?.version ?? '0.0.0';

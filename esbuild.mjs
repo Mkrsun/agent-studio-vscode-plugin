@@ -32,32 +32,18 @@ const marketplaceWebviewConfig = {
   minify: production,
 };
 
-/** @type {import('esbuild').BuildOptions} */
-const inspectorWebviewConfig = {
-  entryPoints: ['media/inspector/inspector.js'],
-  bundle: true,
-  outfile: 'dist/inspector-webview.js',
-  format: 'iife',
-  platform: 'browser',
-  target: 'es2020',
-  sourcemap: !production,
-  minify: production,
-};
-
 async function main() {
   if (watch) {
-    const [extCtx, mktCtx, vizCtx] = await Promise.all([
+    const [extCtx, mktCtx] = await Promise.all([
       esbuild.context(extensionConfig),
       esbuild.context(marketplaceWebviewConfig),
-      esbuild.context(inspectorWebviewConfig),
     ]);
-    await Promise.all([extCtx.watch(), mktCtx.watch(), vizCtx.watch()]);
+    await Promise.all([extCtx.watch(), mktCtx.watch()]);
     console.log('Watching for changes...');
   } else {
     await Promise.all([
       esbuild.build(extensionConfig),
       esbuild.build(marketplaceWebviewConfig),
-      esbuild.build(inspectorWebviewConfig),
     ]);
   }
 }

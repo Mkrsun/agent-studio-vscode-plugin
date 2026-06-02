@@ -7,7 +7,6 @@ export const WORKSPACE_FOLDER = '.agent-studio';
 
 export const COMMANDS = {
   OPEN_MARKETPLACE: 'agentStudio.openMarketplace',
-  OPEN_VISUALIZER: 'agentStudio.openVisualizer',
   REFRESH_LIBRARY: 'agentStudio.refreshLibrary',
   ENABLE_ASSET: 'agentStudio.enableAsset',
   DISABLE_ASSET: 'agentStudio.disableAsset',
@@ -29,7 +28,6 @@ export const CONTEXT_KEYS = {
 
 export const VIEW_IDS = {
   ASSET_LIBRARY: 'agentStudio.assetLibrary',
-  ACTIVE_WORKFLOWS: 'agentStudio.activeWorkflows',
 } as const;
 
 export const CONFIG_KEYS = {
@@ -39,7 +37,6 @@ export const CONFIG_KEYS = {
   DISABLED_ASSETS: 'agentStudio.disabledAssets',
   AUTO_INJECT: 'agentStudio.autoInjectEnabledAssets',
   DEFAULT_WORKFLOW: 'agentStudio.defaultWorkflow',
-  VISUALIZER_AUTO_OPEN: 'agentStudio.visualizerAutoOpen',
   MAX_CONTEXT_ASSETS: 'agentStudio.maxContextAssets',
   AUTH_REQUIRED_GITHUB_ORGS: 'agentStudio.auth.requiredGitHubOrgs',
   AUTH_BYPASS_FOR_DEV: 'agentStudio.auth.bypassForDev',
