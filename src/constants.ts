@@ -24,6 +24,7 @@ export const COMMANDS = {
 
 export const CONTEXT_KEYS = {
   AUTHENTICATED: 'agentStudio.authenticated',
+  UPDATING: 'agentStudio.updating',
 } as const;
 
 export const VIEW_IDS = {
@@ -40,7 +41,23 @@ export const CONFIG_KEYS = {
   MAX_CONTEXT_ASSETS: 'agentStudio.maxContextAssets',
   AUTH_REQUIRED_GITHUB_ORGS: 'agentStudio.auth.requiredGitHubOrgs',
   AUTH_BYPASS_FOR_DEV: 'agentStudio.auth.bypassForDev',
+  AUTH_REQUIRE_ORG: 'agentStudio.auth.requireOrgMembership',
+  EXTENSION_AUTO_UPDATE: 'agentStudio.extensionAutoUpdate',
+  EXTENSION_UPDATE_REPO: 'agentStudio.extensionUpdateRepo',
+  EXTENSION_UPDATE_MANIFEST: 'agentStudio.extensionUpdateManifestPath',
+  ANALYTICS_REPO: 'agentStudio.analyticsRepo',
+  ASSET_AUTO_UPDATE: 'agentStudio.assetAutoUpdate',
 } as const;
+
+// Environment-variable overrides (env wins over settings → easy CI/ops pointing
+// without touching VS Code settings.json).
+export const ENV = {
+  UPDATE_REPO: 'AGENT_STUDIO_UPDATE_REPO',        // owner/repo for the extension's own VSIX releases
+  MARKETPLACE_REPO: 'AGENT_STUDIO_MARKETPLACE_REPO', // owner/repo of a content marketplace (quick single override)
+  ANALYTICS_REPO: 'AGENT_STUDIO_ANALYTICS_REPO',  // owner/repo of the analytics datastore
+} as const;
+
+export const DEFAULT_UPDATE_REPO = 'Mkrsun/agent-studio-vscode-plugin';
 
 export const ASSET_TYPE_LABELS: Record<string, string> = {
   skill: 'Skills',

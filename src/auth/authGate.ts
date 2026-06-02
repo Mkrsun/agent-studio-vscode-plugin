@@ -14,7 +14,7 @@ import { AssetInstaller } from '../marketplace/installer';
 import { MarketplaceService } from '../marketplace/marketplaceService';
 import { COMMANDS, VIEW_IDS } from '../constants';
 import { AuthService } from './authService';
-import { checkForUpdates } from './updateChecker';
+import { enforceLatestVersion } from './updateChecker';
 
 /**
  * Registers all feature surfaces that should exist only for authenticated users.
@@ -33,6 +33,12 @@ export async function registerAuthenticatedSurface(
   const getToken = authService
     ? () => authService.getAccessToken()
     : () => Promise.resolve<string | null>(null);
+
+  // ── Self-update at init: auto-installs a newer VSIX from the configured repo ──
+  // (throttled once/day internally; needs the token to read a PRIVATE update repo)
+  const currentVersion =
+    (context.extension?.packageJSON as { version?: string } | undefined)?.version ?? '0.0.0';
+  await enforceLatestVersion(context, currentVersion, configService, { getToken });
 
   const marketplaceService = new MarketplaceService(configService, getToken);
   disposables.push(marketplaceService);
@@ -154,10 +160,6 @@ export async function registerAuthenticatedSurface(
 
   // Dispose scope service when surface tears down
   disposables.push(scopeService);
-
-  // ── Update check (fire-and-forget; throttled internally) ──────────────────
-  const currentVersion = (context.extension?.packageJSON as { version?: string } | undefined)?.version ?? '0.0.0';
-  void checkForUpdates(context, currentVersion);
 
   return disposables;
 }

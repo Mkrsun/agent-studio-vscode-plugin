@@ -285,12 +285,42 @@
           "type": "array",
           "items": { "type": "string" },
           "default": ["MetLife-Global"],
-          "description": "GitHub organizations that grant access to Agent Studio. User must be an active member of at least one. Add additional MetLife orgs here (e.g. MetLife-LatAm) as needed."
+          "description": "GitHub organizations that grant access — ONLY enforced when agentStudio.auth.requireOrgMembership is true. User must be an active member of at least one."
         },
         "agentStudio.auth.bypassForDev": {
           "type": "boolean",
           "default": false,
           "description": "[DEV ONLY] Skip authentication gating. Has effect ONLY when VS Code runs in Extension Development mode (F5 from source); ignored in production-installed .vsix."
+        },
+        "agentStudio.auth.requireOrgMembership": {
+          "type": "boolean",
+          "default": false,
+          "description": "Feature flag: require active membership in a configured GitHub org (agentStudio.auth.requiredGitHubOrgs). OFF by default — any authenticated GitHub user passes (single private-repo mode). Turning this ON also requests the read:org scope."
+        },
+        "agentStudio.extensionAutoUpdate": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically download + install a newer extension .vsix from the update repo's latest GitHub Release at startup."
+        },
+        "agentStudio.extensionUpdateRepo": {
+          "type": "string",
+          "default": "Mkrsun/agent-studio-vscode-plugin",
+          "description": "owner/repo whose GitHub Releases publish the extension .vsix (self-update source). Env override: AGENT_STUDIO_UPDATE_REPO."
+        },
+        "agentStudio.extensionUpdateManifestPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional repo-relative path to a latest.json manifest ({ version, minimumVersion, forceUpdate }) for forced / minimum-version updates. Empty = use GitHub Releases only."
+        },
+        "agentStudio.analyticsRepo": {
+          "type": "string",
+          "default": "",
+          "description": "owner/repo of the analytics datastore (usage submission). Env override: AGENT_STUDIO_ANALYTICS_REPO."
+        },
+        "agentStudio.assetAutoUpdate": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically re-install installed assets when a newer version appears in the marketplace registry (on catalog refresh)."
         }
       }
     }

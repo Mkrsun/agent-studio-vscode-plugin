@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { CONFIG_KEYS, ENV, DEFAULT_UPDATE_REPO } from '../constants';
 
 export class ConfigService {
   get<T>(key: string): T {
@@ -69,5 +70,52 @@ export class ConfigService {
 
   autoInjectEnabled(): boolean {
     return this.get<boolean>('agentStudio.autoInjectEnabledAssets') ?? true;
+  }
+
+  // ── Repos & feature flags ───────────────────────────────────────────────────
+  // Resolution order is always: ENV VAR  →  VS Code setting  →  built-in default.
+  // (env wins so ops/CI can point a build at different repos without editing settings.)
+
+  /** owner/repo whose GitHub Releases hold the extension's `.vsix` (self-update source). */
+  getExtensionUpdateRepo(): string {
+    return (
+      process.env[ENV.UPDATE_REPO] ||
+      this.get<string>(CONFIG_KEYS.EXTENSION_UPDATE_REPO) ||
+      DEFAULT_UPDATE_REPO
+    );
+  }
+
+  /** Optional repo-relative path to a `latest.json` manifest (forceUpdate / minimumVersion). Empty = use Releases only. */
+  getExtensionUpdateManifestPath(): string {
+    return this.get<string>(CONFIG_KEYS.EXTENSION_UPDATE_MANIFEST) || '';
+  }
+
+  /** When true (default), a newer release is auto-downloaded + installed at startup. */
+  isExtensionAutoUpdate(): boolean {
+    return this.get<boolean>(CONFIG_KEYS.EXTENSION_AUTO_UPDATE) ?? true;
+  }
+
+  /** owner/repo of the analytics datastore (consumed by future usage submission). '' = unset. */
+  getAnalyticsRepo(): string {
+    return (
+      process.env[ENV.ANALYTICS_REPO] ||
+      this.get<string>(CONFIG_KEYS.ANALYTICS_REPO) ||
+      ''
+    );
+  }
+
+  /** Single-repo env override for the content marketplace (used by MarketplaceService). '' = use settings. */
+  getMarketplaceRepoOverride(): string {
+    return process.env[ENV.MARKETPLACE_REPO] || '';
+  }
+
+  /** Feature flag: enterprise org-membership gating. OFF by default (any GitHub user passes). */
+  requireOrgMembership(): boolean {
+    return this.get<boolean>(CONFIG_KEYS.AUTH_REQUIRE_ORG) ?? false;
+  }
+
+  /** When true (default), installed assets auto-update to a newer registry version on catalog refresh. */
+  isAssetAutoUpdate(): boolean {
+    return this.get<boolean>(CONFIG_KEYS.ASSET_AUTO_UPDATE) ?? true;
   }
 }
