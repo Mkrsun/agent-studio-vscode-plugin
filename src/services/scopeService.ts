@@ -128,6 +128,32 @@ export class ScopeService {
       vscode.ConfigurationTarget.Workspace,
     );
   }
+
+  // ── Installed-version tracking (per workspace) — drives update detection ─────
+  private static readonly _VERS_KEY = 'agentStudio.installedAssetVersions';
+
+  private _versions(): Record<string, string> {
+    return this._context.workspaceState.get<Record<string, string>>(ScopeService._VERS_KEY) ?? {};
+  }
+
+  /** The version recorded when this asset was last installed/updated (undefined if never). */
+  getInstalledVersion(assetId: string): string | undefined {
+    return this._versions()[assetId];
+  }
+
+  async setInstalledVersion(assetId: string, version: string): Promise<void> {
+    await this._context.workspaceState.update(ScopeService._VERS_KEY, {
+      ...this._versions(),
+      [assetId]: version,
+    });
+  }
+
+  async clearInstalledVersion(assetId: string): Promise<void> {
+    const v = this._versions();
+    if (v[assetId] === undefined) return;
+    delete v[assetId];
+    await this._context.workspaceState.update(ScopeService._VERS_KEY, v);
+  }
 }
 
 export const SCOPE_ICONS: Record<AssetScope, string> = {

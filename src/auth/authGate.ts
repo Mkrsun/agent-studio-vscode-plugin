@@ -12,6 +12,7 @@ import { PluginRegistry } from '../marketplace/pluginRegistry';
 import { InstalledPluginNode } from '../inspector/inspectorTreeItem';
 import { AssetInstaller } from '../marketplace/installer';
 import { MarketplaceService } from '../marketplace/marketplaceService';
+import { autoUpdateAssets } from '../marketplace/assetAutoUpdate';
 import { COMMANDS, VIEW_IDS } from '../constants';
 import { AuthService } from './authService';
 import { enforceLatestVersion } from './updateChecker';
@@ -53,10 +54,23 @@ export async function registerAuthenticatedSurface(
   const assetInstaller = new AssetInstaller(context, assetLoader, configService, marketplaceService);
 
   await assetLoader.loadAll();
+  if (configService.isAssetAutoUpdate()) {
+    const n = await autoUpdateAssets(assetLoader, scopeService, copilotExporter);
+    if (n > 0) {
+      vscode.window.showInformationMessage(
+        `Agent Studio: auto-updated ${n} asset(s) to the latest version.`,
+      );
+    }
+  }
 
-  // Reload assets whenever the marketplace catalog refreshes.
+  // Reload assets whenever the marketplace catalog refreshes; auto-update if enabled.
   disposables.push(
-    marketplaceService.onDidChangeCatalog(() => void assetLoader.loadAll()),
+    marketplaceService.onDidChangeCatalog(async () => {
+      await assetLoader.loadAll();
+      if (configService.isAssetAutoUpdate()) {
+        await autoUpdateAssets(assetLoader, scopeService, copilotExporter);
+      }
+    }),
   );
 
   // ── TreeView: Inspector (asset-hierarchy navigator) ───────────────────────

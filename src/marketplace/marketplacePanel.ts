@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { AssetLoader } from '../services/assetLoader';
 import { AssetRegistry } from './assetRegistry';
 import { AssetInstaller } from './installer';
+import { isNewer } from '../utils/version';
 import { McpInstaller, MCP_CATALOG, COPILOT_EXTENSIONS_CATALOG } from './mcpInstaller';
 import { PluginRegistry } from './pluginRegistry';
 import { MarketplaceSource } from './pluginTypes';
@@ -22,6 +23,7 @@ type IncomingMsg =
   | { type: 'marketplace:ready' }
   | { type: 'marketplace:filterChange'; query: string; assetType: string }
   | { type: 'marketplace:install'; assetId: string }
+  | { type: 'marketplace:update'; assetId: string }
   | { type: 'marketplace:uninstall'; assetId: string }
   | { type: 'marketplace:preview'; assetId: string }
   | { type: 'marketplace:installMcp'; serverId: string }
@@ -94,6 +96,16 @@ export class MarketplacePanel {
     this._panel.onDidDispose(() => { MarketplacePanel.currentPanel = undefined; });
   }
 
+  /** Build the asset-state message the webview uses to pick Install / Installed / Update. */
+  private _assetStateMsg(assetId: string): Record<string, unknown> {
+    const installed = this.scopeService.getScope(assetId) === 'repo';
+    const installedVersion = this.scopeService.getInstalledVersion(assetId);
+    const availableVersion = this.assetLoader.getById(assetId)?.version;
+    const hasUpdate =
+      installed && !!installedVersion && !!availableVersion && isNewer(availableVersion, installedVersion);
+    return { type: 'marketplace:assetState', assetId, installed, installedVersion, availableVersion, hasUpdate };
+  }
+
   private async _handle(msg: IncomingMsg): Promise<void> {
     switch (msg.type) {
       case 'marketplace:ready': {
@@ -102,12 +114,10 @@ export class MarketplacePanel {
         const assets = this._registry.getCatalog('', initialType);
         this._post({ type: 'marketplace:loadCatalog', assets } as any);
 
-        for (const asset of assets) {
-          this._post({
-            type: 'marketplace:assetState' as any,
-            assetId: asset.id,
-            installed: this.scopeService.getScope(asset.id) === 'repo',
-          } as any);
+        // Send state for the FULL catalog (not just the visible filter) so Install/
+        // Update status is correct on every tab.
+        for (const entry of this._registry.getCatalog('', 'all')) {
+          this._post(this._assetStateMsg(entry.id) as any);
         }
 
         // ── MCP Servers ────────────────────────────────────────────────────
@@ -137,46 +147,44 @@ export class MarketplacePanel {
         break;
       }
 
-      case 'marketplace:install': {
+      case 'marketplace:install':
+      case 'marketplace:update': {
+        const updating = msg.type === 'marketplace:update';
         await this.scopeService.setScope(msg.assetId, 'repo');
         const result = await this._exporter.exportOne(
           msg.assetId,
           this.scopeService.getRepoScopedIds(),
         );
-        this._post({
-          type: 'marketplace:assetState' as any,
-          assetId: msg.assetId,
-          installed: result.ok,
-        } as any);
         const asset = this.assetLoader.getById(msg.assetId);
         if (result.ok) {
+          if (asset) await this.scopeService.setInstalledVersion(msg.assetId, asset.version);
           vscode.window.showInformationMessage(
-            `✅ "${asset?.name}" installed to .github/ — Copilot will pick it up natively.`,
+            updating
+              ? `⬆ "${asset?.name}" updated to v${asset?.version} in .github/.`
+              : `✅ "${asset?.name}" installed to .github/ — Copilot will pick it up natively.`,
           );
         } else {
-          vscode.window.showErrorMessage(`Install failed: ${result.error}`);
-          await this.scopeService.setScope(msg.assetId, 'disabled');
+          vscode.window.showErrorMessage(`${updating ? 'Update' : 'Install'} failed: ${result.error}`);
+          if (!updating) await this.scopeService.setScope(msg.assetId, 'disabled');
         }
+        this._post(this._assetStateMsg(msg.assetId) as any);
         break;
       }
 
       case 'marketplace:uninstall': {
         await this.scopeService.setScope(msg.assetId, 'disabled');
+        await this.scopeService.clearInstalledVersion(msg.assetId);
         const result = await this._exporter.removeOne(
           msg.assetId,
           this.scopeService.getRepoScopedIds(),
         );
-        this._post({
-          type: 'marketplace:assetState' as any,
-          assetId: msg.assetId,
-          installed: false,
-        } as any);
         const asset = this.assetLoader.getById(msg.assetId);
         if (result.ok) {
           vscode.window.showInformationMessage(`🗑 "${asset?.name}" uninstalled from .github/`);
         } else {
           vscode.window.showErrorMessage(`Uninstall failed: ${result.error}`);
         }
+        this._post(this._assetStateMsg(msg.assetId) as any);
         break;
       }
 
