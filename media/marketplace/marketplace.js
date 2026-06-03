@@ -94,7 +94,12 @@ window.addEventListener('message', event => {
       renderAssets(msg.assets);
       break;
     case 'marketplace:assetState':
-      assetStates.set(msg.assetId, { installed: !!msg.installed });
+      assetStates.set(msg.assetId, {
+        installed: !!msg.installed,
+        hasUpdate: !!msg.hasUpdate,
+        installedVersion: msg.installedVersion,
+        availableVersion: msg.availableVersion,
+      });
       updateAssetCard(msg.assetId);
       break;
     case 'marketplace:installResult':
@@ -146,8 +151,19 @@ function renderAssets(assets) {
   assets.forEach(asset => grid.appendChild(buildAssetCard(asset)));
 }
 
+// Pick button appearance + action from asset state: Install → Installed → Update.
+function assetBtnProps(state) {
+  if (state.hasUpdate) return { cls: 'btn-warning', label: '↑ Update', title: 'Update to v' + (state.availableVersion || '') };
+  if (state.installed) return { cls: 'btn-success', label: '✓ Installed', title: 'Uninstall from .github/' };
+  return { cls: 'btn-primary', label: '↓ Install', title: 'Install to .github/' };
+}
+function assetAction(state) {
+  return state.hasUpdate ? 'marketplace:update' : (state.installed ? 'marketplace:uninstall' : 'marketplace:install');
+}
+
 function buildAssetCard(asset) {
-  const state = assetStates.get(asset.id) ?? { installed: false };
+  const state = assetStates.get(asset.id) ?? { installed: false, hasUpdate: false };
+  const bp = assetBtnProps(state);
   const card = document.createElement('div');
   card.className = 'asset-card';
   card.dataset.id = asset.id;
@@ -166,19 +182,15 @@ function buildAssetCard(asset) {
       <span>${esc(asset.source)}</span>
     </div>
     <div class="asset-card__actions">
-      <button class="btn ${state.installed ? 'btn-success' : 'btn-primary'}" data-action="install-toggle"
-        title="${state.installed ? 'Uninstall from .github/' : 'Install to .github/'}">
-        ${state.installed ? '✓ Installed' : '↓ Install'}
+      <button class="btn ${bp.cls}" data-action="install-toggle" title="${bp.title}">
+        ${bp.label}
       </button>
       <button class="btn btn-secondary" data-action="preview">Preview</button>
     </div>`;
 
   card.querySelector('[data-action="install-toggle"]').addEventListener('click', () => {
-    const currentlyInstalled = assetStates.get(asset.id)?.installed ?? false;
-    vscode.postMessage({
-      type: currentlyInstalled ? 'marketplace:uninstall' : 'marketplace:install',
-      assetId: asset.id,
-    });
+    const s = assetStates.get(asset.id) ?? { installed: false };
+    vscode.postMessage({ type: assetAction(s), assetId: asset.id });
   });
 
   card.querySelector('[data-action="preview"]').addEventListener('click', () => {
@@ -191,12 +203,13 @@ function buildAssetCard(asset) {
 function updateAssetCard(assetId) {
   const card = document.querySelector(`[data-id="${assetId}"]`);
   if (!card) return;
-  const installed = assetStates.get(assetId)?.installed ?? false;
+  const state = assetStates.get(assetId) ?? { installed: false, hasUpdate: false };
   const btn = /** @type {HTMLButtonElement} */ (card.querySelector('[data-action="install-toggle"]'));
   if (!btn) return;
-  btn.className = `btn ${installed ? 'btn-success' : 'btn-primary'}`;
-  btn.textContent = installed ? '✓ Installed' : '↓ Install';
-  btn.title = installed ? 'Uninstall from .github/' : 'Install to .github/';
+  const bp = assetBtnProps(state);
+  btn.className = `btn ${bp.cls}`;
+  btn.textContent = bp.label;
+  btn.title = bp.title;
 }
 
 function handleInstallResult({ assetId, success, error }) {

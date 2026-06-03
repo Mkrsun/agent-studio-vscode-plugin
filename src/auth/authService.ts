@@ -12,7 +12,9 @@ import {
 
 const SECRET_KEY_SESSION = 'agentStudio.auth.session.v1';
 const GITHUB_PROVIDER = 'github';
-const SCOPES = ['read:org', 'user:email'];
+// `repo` is required to read PRIVATE marketplace/content repos + download private VSIX
+// release assets for self-update. `read:org` is only requested when org-gating is enabled.
+const BASE_SCOPES = ['repo', 'user:email'];
 
 export class AuthService implements vscode.Disposable {
   private _state: AuthState = 'unauthenticated';
@@ -58,11 +60,11 @@ export class AuthService implements vscode.Disposable {
       }),
     );
 
-    const orgs = this._requiredOrgs();
-    if (orgs.length === 0) {
+    if (this.config.requireOrgMembership() && this._requiredOrgs().length === 0) {
       this._denyReason = {
         kind: 'misconfigured',
-        message: 'No GitHub organizations configured (agentStudio.auth.requiredGitHubOrgs).',
+        message:
+          'Org gating is enabled (agentStudio.auth.requireOrgMembership) but no orgs are configured (agentStudio.auth.requiredGitHubOrgs).',
       };
       this._transition('denied');
       return;
@@ -83,11 +85,11 @@ export class AuthService implements vscode.Disposable {
     this._denyReason = null;
     this._transition('authenticating');
 
-    const orgs = this._requiredOrgs();
-    if (orgs.length === 0) {
+    if (this.config.requireOrgMembership() && this._requiredOrgs().length === 0) {
       const reason: DenyReason = {
         kind: 'misconfigured',
-        message: 'No GitHub organizations configured (agentStudio.auth.requiredGitHubOrgs).',
+        message:
+          'Org gating is enabled (agentStudio.auth.requireOrgMembership) but no orgs are configured (agentStudio.auth.requiredGitHubOrgs).',
       };
       this._denyReason = reason;
       this._transition('denied');
@@ -173,7 +175,10 @@ export class AuthService implements vscode.Disposable {
     if (opts.accountHint) {
       options.account = { id: opts.accountHint, label: opts.accountHint };
     }
-    const session = await vscode.authentication.getSession(GITHUB_PROVIDER, SCOPES, options);
+    const scopes = this.config.requireOrgMembership()
+      ? [...BASE_SCOPES, 'read:org']
+      : BASE_SCOPES;
+    const session = await vscode.authentication.getSession(GITHUB_PROVIDER, scopes, options);
     return session ?? null;
   }
 
@@ -181,8 +186,6 @@ export class AuthService implements vscode.Disposable {
     | { ok: true; session: SessionInfo }
     | { ok: false; reason: DenyReason }
   > {
-    const orgs = this._requiredOrgs();
-
     const me = await this._github.getUser(session.accessToken);
     if (!me.ok) {
       return { ok: false, reason: { kind: 'github_error', message: me.error } };
@@ -190,6 +193,12 @@ export class AuthService implements vscode.Disposable {
     const login = me.user.login;
     const displayName = me.user.name ?? me.user.login;
 
+    // Feature flag OFF (default): any authenticated GitHub user passes — no org gating.
+    if (!this.config.requireOrgMembership()) {
+      return { ok: true, session: { login, displayName, matchedOrgs: [] } };
+    }
+
+    const orgs = this._requiredOrgs();
     const checks = await Promise.all(
       orgs.map((org) => this._github.checkOrgMembership(session.accessToken, org)),
     );
