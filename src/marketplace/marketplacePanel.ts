@@ -14,6 +14,7 @@ import { AssetType } from '../models/types';
 import { getNonce } from '../utils/webviewUtils';
 import { HostMessage, WebviewMessage } from '../shared/protocol';
 import { log, error as logError } from '../services/logger';
+import { recordAsset } from '../analytics/metrics';
 
 export type MarketplaceTab = 'assets' | 'plugins' | 'mcp' | 'extensions';
 export interface MarketplacePreFilter {
@@ -156,6 +157,9 @@ export class MarketplacePanel {
         const asset = this.assetLoader.getById(msg.assetId);
         if (result.ok) {
           if (asset) await this.scopeService.setInstalledVersion(msg.assetId, asset.version);
+          if (asset) {
+            recordAsset({ event: updating ? 'update' : 'install', assetId: asset.id, assetType: asset.type, marketplace: asset.marketplaceId });
+          }
           vscode.window.showInformationMessage(
             updating
               ? `⬆ "${asset?.name}" updated to v${asset?.version} in .github/.`
@@ -178,6 +182,9 @@ export class MarketplacePanel {
         );
         const asset = this.assetLoader.getById(msg.assetId);
         if (result.ok) {
+          if (asset) {
+            recordAsset({ event: 'uninstall', assetId: asset.id, assetType: asset.type, marketplace: asset.marketplaceId });
+          }
           vscode.window.showInformationMessage(`🗑 "${asset?.name}" uninstalled from .github/`);
         } else {
           vscode.window.showErrorMessage(`Uninstall failed: ${result.error}`);

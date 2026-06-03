@@ -148,6 +148,23 @@ export class ConfigService {
   isAssetAutoUpdate(): boolean {
     return this.get<boolean>(CONFIG_KEYS.ASSET_AUTO_UPDATE) ?? true;
   }
+
+  // ── Anonymous analytics (auto / opt-out) ────────────────────────────────────
+
+  /** Master switch for anonymous metric collection. Default ON (opt-out). */
+  isAnalyticsEnabled(): boolean {
+    return this.get<boolean>(CONFIG_KEYS.ANALYTICS_ENABLED) ?? true;
+  }
+
+  /** Auto-PR collected metrics to the analytics repo (throttled daily). Default ON. */
+  isAnalyticsAutoSubmit(): boolean {
+    return this.get<boolean>(CONFIG_KEYS.ANALYTICS_AUTO_SUBMIT) ?? true;
+  }
+
+  /** Auto-enable Copilot's OTel token export so real token counts flow. Default ON. */
+  isAutoEnableCopilotOtel(): boolean {
+    return this.get<boolean>(CONFIG_KEYS.ANALYTICS_AUTO_OTEL) ?? true;
+  }
 }
 
 /**

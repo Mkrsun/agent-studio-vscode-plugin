@@ -8,6 +8,7 @@ import { CopilotExporter } from '../services/copilotExporter';
 import { COMMANDS } from '../constants';
 import { Workflow } from '../models/types';
 import { MarketplaceService } from '../marketplace/marketplaceService';
+import { recordAsset } from '../analytics/metrics';
 
 /**
  * Wires the Inspector context-menu commands. Each handler is its own named
@@ -61,6 +62,7 @@ async function installAsset(
   await scopeService.setScope(node.asset.id, 'repo');
   const result = await copilotExporter.exportOne(node.asset.id, scopeService.getRepoScopedIds());
   if (result.ok) {
+    recordAsset({ event: 'install', assetId: node.asset.id, assetType: node.asset.type, marketplace: node.asset.marketplaceId });
     vscode.window.showInformationMessage(`✅ "${node.asset.name}" installed to .github/`);
   } else {
     await scopeService.setScope(node.asset.id, 'disabled');
@@ -77,6 +79,7 @@ async function uninstallAsset(
   await scopeService.setScope(node.asset.id, 'disabled');
   const result = await copilotExporter.removeOne(node.asset.id, scopeService.getRepoScopedIds());
   if (result.ok) {
+    recordAsset({ event: 'uninstall', assetId: node.asset.id, assetType: node.asset.type, marketplace: node.asset.marketplaceId });
     vscode.window.showInformationMessage(`🗑 "${node.asset.name}" uninstalled from .github/`);
   } else {
     vscode.window.showErrorMessage(`Uninstall failed: ${result.error}`);

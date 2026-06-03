@@ -12,7 +12,8 @@ import { PluginRegistry } from '../marketplace/pluginRegistry';
 import { InstalledPluginNode } from '../inspector/inspectorTreeItem';
 import { MarketplaceService } from '../marketplace/marketplaceService';
 import { autoUpdateAssets } from '../marketplace/assetAutoUpdate';
-import { submitUsage } from '../analytics/usageSubmitter';
+import { AnalyticsService } from '../analytics/analyticsService';
+import { initMetrics } from '../analytics/metrics';
 import { COMMANDS, VIEW_IDS } from '../constants';
 import { AuthService } from './authService';
 import { enforceLatestVersion } from './updateChecker';
@@ -44,6 +45,7 @@ class AuthenticatedSurface {
   private readonly exporter: CopilotExporter;
   private readonly mcp: McpInstaller;
   private readonly plugins: PluginRegistry;
+  private readonly analytics: AnalyticsService;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -59,6 +61,7 @@ class AuthenticatedSurface {
     this.exporter = new CopilotExporter(this.assets);
     this.mcp = new McpInstaller();
     this.plugins = new PluginRegistry(context);
+    this.analytics = new AnalyticsService(context, config, this.getToken);
   }
 
   /** Self-update, load content, then wire the tree, participant, and commands. */
@@ -67,11 +70,16 @@ class AuthenticatedSurface {
     await this.marketplace.initialize();
     await this.loadAndAutoUpdate();
 
+    // Anonymous analytics: facade up first, then start (fail-soft — never throws).
+    initMetrics(this.analytics);
+    void this.analytics.start();
+
     const inspector = new InspectorProvider(this.assets, this.scopes, this.plugins, this.mcp, this.marketplace);
 
     return [
       this.marketplace,
       this.scopes,
+      this.analytics,
       this.marketplace.onDidChangeCatalog(() => this.onCatalogChanged()),
       this.createInspectorTree(inspector),
       registerParticipant(this.context, this.assets, this.scopes, this.config, this.authService),
@@ -120,7 +128,7 @@ class AuthenticatedSurface {
     return [
       vscode.commands.registerCommand(COMMANDS.OPEN_MARKETPLACE, (f?: MarketplacePreFilter) => this.openMarketplace(f)),
       vscode.commands.registerCommand(COMMANDS.EXPORT_TO_COPILOT, () => this.exportToCopilot()),
-      vscode.commands.registerCommand(COMMANDS.SUBMIT_USAGE, () => submitUsage(this.config.getAnalyticsRepo(), this.getToken)),
+      vscode.commands.registerCommand(COMMANDS.SUBMIT_USAGE, () => this.analytics.submitNow()),
       vscode.commands.registerCommand(COMMANDS.INSTALL_PLUGIN, () => this.installPlugin()),
       vscode.commands.registerCommand(COMMANDS.UNINSTALL_PLUGIN, (node?: InstalledPluginNode) => this.uninstallPlugin(node)),
     ];

@@ -48,6 +48,9 @@ export const CONFIG_KEYS = {
   EXTENSION_UPDATE_REPO: 'agentStudio.extensionUpdateRepo',
   EXTENSION_UPDATE_MANIFEST: 'agentStudio.extensionUpdateManifestPath',
   ANALYTICS_REPO: 'agentStudio.analyticsRepo',
+  ANALYTICS_ENABLED: 'agentStudio.analytics.enabled',
+  ANALYTICS_AUTO_SUBMIT: 'agentStudio.analytics.autoSubmit',
+  ANALYTICS_AUTO_OTEL: 'agentStudio.analytics.autoEnableCopilotOtel',
   ASSET_AUTO_UPDATE: 'agentStudio.assetAutoUpdate',
 } as const;
 

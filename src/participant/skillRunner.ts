@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { Skill, Agent } from '../models/types';
 import { AssetLoader } from '../services/assetLoader';
+import { recordAsset, recordUsage } from '../analytics/metrics';
+import { countTokensSafe } from '../analytics/metricsCollector';
 
 /**
  * Handles explicit skill and agent invocation via /skill and /agent commands.
@@ -78,10 +80,14 @@ export class SkillRunner {
       vscode.LanguageModelChatMessage.User(userPrompt || 'Please apply this skill.'),
     ];
 
+    recordAsset({ event: 'invoke', assetId: skill.id, assetType: 'skill' });
+    const startedAt = Date.now();
+    let output = '';
     try {
       const response = await model.sendRequest(messages, {}, token);
       for await (const chunk of response.text) {
         if (token.isCancellationRequested) break;
+        output += chunk;
         stream.markdown(chunk);
       }
     } catch (err) {
@@ -89,6 +95,7 @@ export class SkillRunner {
         stream.markdown(`\n\n❌ **Error:** ${err.message}`);
       } else throw err;
     }
+    void recordRun(model, systemPrompt + userPrompt, output, Date.now() - startedAt, skill.id, 'skill');
 
     // Offer related skills as follow-ups via skill examples
     if (skill.examples?.length) {
@@ -158,18 +165,21 @@ export class SkillRunner {
       return { metadata: { command: 'agent' } };
     }
 
+    const userPrompt = question || 'What can you help me with as this agent?';
     const messages: vscode.LanguageModelChatMessage[] = [
       vscode.LanguageModelChatMessage.User(systemPrompt),
       ...this._buildHistory(context),
-      vscode.LanguageModelChatMessage.User(
-        question || 'What can you help me with as this agent?',
-      ),
+      vscode.LanguageModelChatMessage.User(userPrompt),
     ];
 
+    recordAsset({ event: 'invoke', assetId: agent.id, assetType: 'agent' });
+    const startedAt = Date.now();
+    let output = '';
     try {
       const response = await model.sendRequest(messages, {}, token);
       for await (const chunk of response.text) {
         if (token.isCancellationRequested) break;
+        output += chunk;
         stream.markdown(chunk);
       }
     } catch (err) {
@@ -177,6 +187,7 @@ export class SkillRunner {
         stream.markdown(`\n\n❌ **Error:** ${err.message}`);
       } else throw err;
     }
+    void recordRun(model, systemPrompt + userPrompt, output, Date.now() - startedAt, agent.id, 'agent');
 
     return { metadata: { command: 'agent', agentId } };
   }
@@ -285,4 +296,28 @@ export class SkillRunner {
     }
     return { metadata: { command: 'agent' } };
   }
+}
+
+/** Record an anonymous token-usage metric for a skill/agent run (numbers only). */
+async function recordRun(
+  model: vscode.LanguageModelChat,
+  inputText: string,
+  output: string,
+  durationMs: number,
+  assetId: string,
+  command: 'skill' | 'agent',
+): Promise<void> {
+  const [inputTokens, outputTokens] = await Promise.all([
+    countTokensSafe(model, inputText),
+    countTokensSafe(model, output),
+  ]);
+  recordUsage({
+    model: model.family || model.id || 'copilot',
+    assetId,
+    assetType: command,
+    command,
+    inputTokens,
+    outputTokens,
+    durationMs,
+  });
 }
