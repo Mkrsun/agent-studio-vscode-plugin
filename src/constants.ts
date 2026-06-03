@@ -57,6 +57,7 @@ export const ENV = {
   MARKETPLACE_REPO: 'AGENT_STUDIO_MARKETPLACE_REPO', // owner/repo of a content marketplace (quick single override)
   MARKETPLACES: 'AGENT_STUDIO_MARKETPLACES',      // full multi-marketplace list: "id:Label:owner/repo, …" or JSON array
   ANALYTICS_REPO: 'AGENT_STUDIO_ANALYTICS_REPO',  // owner/repo of the analytics datastore
+  REQUIRED_ORGS: 'AGENT_STUDIO_REQUIRED_ORGS',    // comma-separated GitHub orgs that grant access (org-gating)
 } as const;
 
 export const DEFAULT_UPDATE_REPO = 'Mkrsun/agent-studio-vscode-plugin';

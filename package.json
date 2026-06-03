@@ -4,6 +4,10 @@
   "description": "GitHub Copilot agent framework: marketplace web UI + asset inspector (sidebar navigator) + multi-phase chat workflows",
   "version": "0.1.0",
   "publisher": "agent-studio",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Mkrsun/agent-studio-vscode-plugin.git"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -285,8 +289,8 @@
         "agentStudio.auth.requiredGitHubOrgs": {
           "type": "array",
           "items": { "type": "string" },
-          "default": ["MetLife-Global"],
-          "description": "GitHub organizations that grant access — ONLY enforced when agentStudio.auth.requireOrgMembership is true. User must be an active member of at least one."
+          "default": [],
+          "description": "GitHub organizations that grant access — ONLY enforced when agentStudio.auth.requireOrgMembership is true. User must be an active member of at least one. Env override: AGENT_STUDIO_REQUIRED_ORGS (comma-separated)."
         },
         "agentStudio.auth.bypassForDev": {
           "type": "boolean",
@@ -335,7 +339,7 @@
     "typecheck": "tsc --noEmit && tsc -p webview-ui/tsconfig.json --noEmit",
     "test": "vscode-test",
     "package:vsix": "vsce package --no-dependencies -o dist/agent-studio-$npm_package_version.vsix",
-    "release": "gh release create v$npm_package_version dist/agent-studio-$npm_package_version.vsix --repo MetLife-Global/agent-studio-vscode-plugin --notes-file RELEASE_NOTES.md"
+    "release": "node scripts/release.mjs"
   },
   "dependencies": {
     "js-yaml": "^4.1.1",

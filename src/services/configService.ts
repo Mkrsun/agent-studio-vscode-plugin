@@ -131,6 +131,19 @@ export class ConfigService {
     return this.get<boolean>(CONFIG_KEYS.AUTH_REQUIRE_ORG) ?? false;
   }
 
+  /**
+   * GitHub orgs that grant access when org-gating is on. Resolution order:
+   * AGENT_STUDIO_REQUIRED_ORGS (comma-separated) → setting → []. No hardcoded org.
+   */
+  getRequiredOrgs(): string[] {
+    const fromEnv = (process.env[ENV.REQUIRED_ORGS] || '')
+      .split(',')
+      .map((o) => o.trim())
+      .filter(Boolean);
+    if (fromEnv.length > 0) return fromEnv;
+    return this.get<string[]>(CONFIG_KEYS.AUTH_REQUIRED_GITHUB_ORGS) ?? [];
+  }
+
   /** When true (default), installed assets auto-update to a newer registry version on catalog refresh. */
   isAssetAutoUpdate(): boolean {
     return this.get<boolean>(CONFIG_KEYS.ASSET_AUTO_UPDATE) ?? true;
