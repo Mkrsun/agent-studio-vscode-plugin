@@ -11,7 +11,7 @@ import {
 /**
  * Orchestrates all configured marketplaces. Loads them in parallel on
  * initialization, exposes resolved catalogs, and fires change events.
- * Consumers (AssetLoader, LibraryProvider, MarketplacePanel) listen to
+ * Consumers (AssetLoader, InspectorProvider, MarketplacePanel) listen to
  * onDidChangeCatalog and call getMarketplaces() / getAssetsForMarketplace().
  */
 export class MarketplaceService implements vscode.Disposable {

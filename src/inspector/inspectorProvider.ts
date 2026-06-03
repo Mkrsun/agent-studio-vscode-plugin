@@ -7,7 +7,7 @@ import { MarketplaceService } from '../marketplace/marketplaceService';
 import { AssetType } from '../models/types';
 import { ASSET_TYPES } from '../constants';
 import {
-  LibraryNode,
+  InspectorNode,
   MarketplaceGroupNode,
   CategoryNode,
   AssetNode,
@@ -17,10 +17,10 @@ import {
   McpCategoryNode,
   InstalledMcpNode,
   NoMcpNode,
-} from './libraryTreeItem';
+} from './inspectorTreeItem';
 
-export class LibraryProvider implements vscode.TreeDataProvider<LibraryNode> {
-  private _onDidChangeTreeData = new vscode.EventEmitter<LibraryNode | undefined | void>();
+export class InspectorProvider implements vscode.TreeDataProvider<InspectorNode> {
+  private _onDidChangeTreeData = new vscode.EventEmitter<InspectorNode | undefined | void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
   constructor(
@@ -40,11 +40,11 @@ export class LibraryProvider implements vscode.TreeDataProvider<LibraryNode> {
     this._onDidChangeTreeData.fire();
   }
 
-  getTreeItem(element: LibraryNode): vscode.TreeItem {
+  getTreeItem(element: InspectorNode): vscode.TreeItem {
     return element.toTreeItem();
   }
 
-  getChildren(element?: LibraryNode): LibraryNode[] {
+  getChildren(element?: InspectorNode): InspectorNode[] {
     // ── Root: one MarketplaceGroupNode per configured marketplace,
     //          then Plugins and MCP Servers sections.
     if (!element) {
@@ -76,7 +76,7 @@ export class LibraryProvider implements vscode.TreeDataProvider<LibraryNode> {
       if (assets.length === 0) {
         const empty = new vscode.TreeItem('No assets of this type');
         empty.description = 'Browse the Marketplace to find more';
-        return [{ toTreeItem: () => empty } as LibraryNode];
+        return [{ toTreeItem: () => empty } as InspectorNode];
       }
 
       const sorted = [...assets].sort((a, b) => {

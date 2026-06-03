@@ -63,14 +63,11 @@ class SignInTreeProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
 export function registerSignInViews(authService: AuthService): vscode.Disposable[] {
   const provider = new SignInTreeProvider(authService);
 
-  const library = vscode.window.createTreeView(VIEW_IDS.ASSET_LIBRARY, {
-    treeDataProvider: provider,
-  });
-  const workflows = vscode.window.createTreeView(VIEW_IDS.ACTIVE_WORKFLOWS, {
+  const inspectorView = vscode.window.createTreeView(VIEW_IDS.INSPECTOR, {
     treeDataProvider: provider,
   });
 
   const stateListener = authService.onDidChangeAuthState(() => provider.refresh());
 
-  return [library, workflows, stateListener];
+  return [inspectorView, stateListener];
 }

@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import { AssetLoader } from '../services/assetLoader';
 import { ScopeService } from '../services/scopeService';
-import { ExecutionTracker } from '../visualizer/executionTracker';
 import { ConfigService } from '../services/configService';
 import { AuthService } from '../auth/authService';
 import { WorkflowSelector } from './workflowSelector';
@@ -14,7 +13,6 @@ export function registerParticipant(
   context: vscode.ExtensionContext,
   assetLoader: AssetLoader,
   scopeService: ScopeService,
-  tracker: ExecutionTracker,
   configService: ConfigService,
   authService: AuthService | null,
 ): vscode.Disposable {
@@ -70,9 +68,6 @@ export function registerParticipant(
         token,
         systemPrompt,
         phaseHeader,
-        match.workflow,
-        match.phase,
-        tracker,
       );
     },
   );
