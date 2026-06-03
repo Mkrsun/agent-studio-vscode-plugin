@@ -29,16 +29,21 @@ const STATUS_DESCRIPTIONS: Record<MarketplaceStatus, string> = {
 };
 
 export class MarketplaceGroupNode extends InspectorNode {
-  constructor(public readonly marketplace: ResolvedMarketplace) {
+  constructor(
+    public readonly marketplace: ResolvedMarketplace,
+    /** True when this group has nested child marketplaces (so it expands even with 0 own assets). */
+    public readonly hasChildGroups: boolean = false,
+  ) {
     super();
   }
 
   toTreeItem(): vscode.TreeItem {
     const { descriptor, status, assets, errorMessage } = this.marketplace;
     const isReady = status === 'ready';
+    const expandable = (isReady && assets.length > 0) || this.hasChildGroups;
     const item = new vscode.TreeItem(
       descriptor.label,
-      isReady && assets.length > 0
+      expandable
         ? vscode.TreeItemCollapsibleState.Collapsed
         : vscode.TreeItemCollapsibleState.None,
     );

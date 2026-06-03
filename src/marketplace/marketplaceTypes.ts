@@ -19,6 +19,18 @@ export interface MarketplaceDescriptor {
    * Used when kind is "localPath" — dev/test only.
    */
   localPath?: string;
+  /**
+   * Optional id of a parent marketplace group. When set, this marketplace is
+   * shown nested under its parent in the Inspector. A parent with no `repo`/
+   * `localPath` is a pure grouping node (e.g. "Regional" containing per-country
+   * marketplaces, each its own repo). See docs/configuration.md → Hierarchy.
+   */
+  parent?: string;
+  /**
+   * Nested child marketplaces (config-authoring convenience). Flattened into
+   * sibling descriptors with `parent` set; not used at runtime after flattening.
+   */
+  children?: MarketplaceDescriptor[];
 }
 
 /** A single asset entry as listed in a marketplace's registry.json. */

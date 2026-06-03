@@ -2,7 +2,7 @@
   "name": "agent-studio",
   "displayName": "Agent Studio",
   "description": "GitHub Copilot agent framework: marketplace web UI + asset inspector (sidebar navigator) + multi-phase chat workflows",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "agent-studio",
   "repository": {
     "type": "git",
@@ -16,7 +16,9 @@
     "Other"
   ],
   "icon": "media/icons/agent-studio.png",
-  "activationEvents": ["onStartupFinished"],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "chatParticipants": [
@@ -148,6 +150,11 @@
       {
         "command": "agentStudio.showAuthStatus",
         "title": "Agent Studio: Show Auth Status"
+      },
+      {
+        "command": "agentStudio.showLogs",
+        "title": "Agent Studio: Show Logs",
+        "icon": "$(output)"
       }
     ],
     "menus": {
@@ -204,21 +211,68 @@
         }
       ],
       "commandPalette": [
-        { "command": "agentStudio.signIn",          "when": "!agentStudio.authenticated" },
-        { "command": "agentStudio.signOut",         "when": "agentStudio.authenticated" },
-        { "command": "agentStudio.showAuthStatus" },
-        { "command": "agentStudio.openMarketplace", "when": "agentStudio.authenticated" },
-        { "command": "agentStudio.exportToCopilot", "when": "agentStudio.authenticated" },
-        { "command": "agentStudio.submitUsage",     "when": "agentStudio.authenticated" },
-        { "command": "agentStudio.refreshInspector",  "when": "agentStudio.authenticated" },
-        { "command": "agentStudio.enableAsset",     "when": "agentStudio.authenticated" },
-        { "command": "agentStudio.disableAsset",    "when": "agentStudio.authenticated" },
-        { "command": "agentStudio.injectAsset",     "when": "agentStudio.authenticated" },
-        { "command": "agentStudio.previewAsset",    "when": "agentStudio.authenticated" },
-        { "command": "agentStudio.installAsset",    "when": "agentStudio.authenticated" },
-        { "command": "agentStudio.uninstallAsset",  "when": "agentStudio.authenticated" },
-        { "command": "agentStudio.installPlugin",   "when": "agentStudio.authenticated" },
-        { "command": "agentStudio.uninstallPlugin", "when": "agentStudio.authenticated" }
+        {
+          "command": "agentStudio.signIn",
+          "when": "!agentStudio.authenticated"
+        },
+        {
+          "command": "agentStudio.signOut",
+          "when": "agentStudio.authenticated"
+        },
+        {
+          "command": "agentStudio.showAuthStatus"
+        },
+        {
+          "command": "agentStudio.showLogs"
+        },
+        {
+          "command": "agentStudio.openMarketplace",
+          "when": "agentStudio.authenticated"
+        },
+        {
+          "command": "agentStudio.exportToCopilot",
+          "when": "agentStudio.authenticated"
+        },
+        {
+          "command": "agentStudio.submitUsage",
+          "when": "agentStudio.authenticated"
+        },
+        {
+          "command": "agentStudio.refreshInspector",
+          "when": "agentStudio.authenticated"
+        },
+        {
+          "command": "agentStudio.enableAsset",
+          "when": "agentStudio.authenticated"
+        },
+        {
+          "command": "agentStudio.disableAsset",
+          "when": "agentStudio.authenticated"
+        },
+        {
+          "command": "agentStudio.injectAsset",
+          "when": "agentStudio.authenticated"
+        },
+        {
+          "command": "agentStudio.previewAsset",
+          "when": "agentStudio.authenticated"
+        },
+        {
+          "command": "agentStudio.installAsset",
+          "when": "agentStudio.authenticated"
+        },
+        {
+          "command": "agentStudio.uninstallAsset",
+          "when": "agentStudio.authenticated"
+        },
+        {
+          "command": "agentStudio.installPlugin",
+          "when": "agentStudio.authenticated"
+        },
+        {
+          "command": "agentStudio.uninstallPlugin",
+          "when": "agentStudio.authenticated"
+        }
       ]
     },
     "configuration": {
@@ -226,19 +280,63 @@
       "properties": {
         "agentStudio.marketplaces": {
           "type": "array",
-          "description": "Configured marketplaces. Each entry must have an 'id', 'label', and either 'repo' (GitHub owner/repo) or 'localPath' (absolute path, dev only).",
+          "description": "Configured marketplaces (the AI-asset hierarchy). Each entry has an 'id', 'label', and either 'repo' (GitHub owner/repo) or 'localPath' (dev only). Use 'children' to nest marketplaces — e.g. a 'Regional' group containing per-country marketplaces, each its own repo. A parent with no 'repo' is a pure grouping node. Env override: AGENT_STUDIO_MARKETPLACES.",
           "items": {
             "type": "object",
-            "required": ["id", "label"],
+            "required": [
+              "id",
+              "label"
+            ],
             "properties": {
-              "id":        { "type": "string", "description": "Unique marketplace identifier (e.g. 'chile')." },
-              "label":     { "type": "string", "description": "Display name shown in the Inspector tree and Marketplace." },
-              "repo":      { "type": "string", "description": "GitHub repo in 'owner/repo' form. Fetched via GitHub Contents API." },
-              "localPath": { "type": "string", "description": "[DEV] Absolute filesystem path to a local marketplace directory." }
+              "id": {
+                "type": "string",
+                "description": "Unique marketplace identifier (e.g. 'chile')."
+              },
+              "label": {
+                "type": "string",
+                "description": "Display name shown in the Inspector tree and Marketplace."
+              },
+              "repo": {
+                "type": "string",
+                "description": "GitHub repo in 'owner/repo' form. Fetched via GitHub Contents API. Omit for a pure grouping node."
+              },
+              "localPath": {
+                "type": "string",
+                "description": "[DEV] Absolute filesystem path to a local marketplace directory."
+              },
+              "children": {
+                "type": "array",
+                "description": "Nested child marketplaces, shown under this group in the Inspector. Each child is an independent marketplace (its own repo).",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "label"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "repo": {
+                      "type": "string"
+                    },
+                    "localPath": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
             }
           },
           "default": [
-            { "id": "agentic-studio", "label": "Agentic Studio Assets", "repo": "Mkrsun/agentic-studio-assets" }
+            {
+              "id": "agentic-studio",
+              "label": "Agentic Studio Assets",
+              "repo": "Mkrsun/agentic-studio-assets"
+            }
           ]
         },
         "agentStudio.workspaceAssetsFolder": {
@@ -281,14 +379,18 @@
         },
         "agentStudio.repoScopedAssets": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "Asset IDs permanently active for this repo — exported to .github/ for all Copilot features.",
           "scope": "resource"
         },
         "agentStudio.auth.requiredGitHubOrgs": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "GitHub organizations that grant access — ONLY enforced when agentStudio.auth.requireOrgMembership is true. User must be an active member of at least one. Env override: AGENT_STUDIO_REQUIRED_ORGS (comma-separated)."
         },
