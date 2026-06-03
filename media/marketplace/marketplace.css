@@ -248,6 +248,20 @@ body {
 .btn-external { background: transparent; color: var(--accent); border: 1px solid var(--accent); font-size: 11px; }
 .btn-external:hover { background: rgba(0,150,255,0.08); }
 .btn-danger   { background: var(--error); color: #fff; }
+.btn-danger:hover:not(:disabled) { opacity: 0.88; }
+
+/* ── Per-asset auto-update toggle ──────────────────────── */
+.asset-card__autoupdate {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  user-select: none;
+}
+.asset-card__autoupdate input { cursor: pointer; margin: 0; }
 
 /* ── MCP / Extension cards ────────────────────────────── */
 .mcp-card, .ext-card {

@@ -18,6 +18,8 @@ export interface AssetState {
   hasUpdate: boolean;
   installedVersion?: string;
   availableVersion?: string;
+  /** Per-asset auto-update preference (off by default). Only meaningful when installed. */
+  autoUpdate: boolean;
 }
 
 export interface McpServer {
@@ -74,7 +76,7 @@ export type MarketplaceTabId = 'assets' | 'plugins' | 'mcp' | 'extensions';
 // ── Host → Webview ───────────────────────────────────────────────────────────
 export type HostMessage =
   | { type: 'marketplace:loadCatalog'; assets: CatalogAsset[] }
-  | { type: 'marketplace:assetState'; assetId: string; installed: boolean; hasUpdate: boolean; installedVersion?: string; availableVersion?: string }
+  | { type: 'marketplace:assetState'; assetId: string; installed: boolean; hasUpdate: boolean; autoUpdate: boolean; installedVersion?: string; availableVersion?: string }
   | { type: 'marketplace:installResult'; assetId: string; success: boolean; error?: string }
   | { type: 'marketplace:loadMcp'; servers: McpServer[] }
   | { type: 'marketplace:mcpState'; serverId: string; installed: boolean }
@@ -91,6 +93,7 @@ export type WebviewMessage =
   | { type: 'marketplace:install'; assetId: string }
   | { type: 'marketplace:update'; assetId: string }
   | { type: 'marketplace:uninstall'; assetId: string }
+  | { type: 'marketplace:setAutoUpdate'; assetId: string; enabled: boolean }
   | { type: 'marketplace:preview'; assetId: string }
   | { type: 'marketplace:installMcp'; serverId: string }
   | { type: 'marketplace:uninstallMcp'; serverId: string }

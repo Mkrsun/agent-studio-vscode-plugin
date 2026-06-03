@@ -92,7 +92,8 @@ export class MarketplacePanel {
     const availableVersion = this.assetLoader.getById(assetId)?.version;
     const hasUpdate =
       installed && !!installedVersion && !!availableVersion && isNewer(availableVersion, installedVersion);
-    return { type: 'marketplace:assetState', assetId, installed, installedVersion, availableVersion, hasUpdate };
+    const autoUpdate = this.scopeService.getAutoUpdate(assetId);
+    return { type: 'marketplace:assetState', assetId, installed, installedVersion, availableVersion, hasUpdate, autoUpdate };
   }
 
   private async _handle(msg: WebviewMessage): Promise<void> {
@@ -181,6 +182,12 @@ export class MarketplacePanel {
         } else {
           vscode.window.showErrorMessage(`Uninstall failed: ${result.error}`);
         }
+        this._post(this._assetStateMsg(msg.assetId));
+        break;
+      }
+
+      case 'marketplace:setAutoUpdate': {
+        await this.scopeService.setAutoUpdate(msg.assetId, msg.enabled);
         this._post(this._assetStateMsg(msg.assetId));
         break;
       }

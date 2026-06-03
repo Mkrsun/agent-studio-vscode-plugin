@@ -154,6 +154,25 @@ export class ScopeService {
     delete v[assetId];
     await this._context.workspaceState.update(ScopeService._VERS_KEY, v);
   }
+
+  // ── Per-asset auto-update preference (per workspace) — OFF by default ────────
+  private static readonly _AUTO_KEY = 'agentStudio.assetAutoUpdate';
+
+  private _autoUpdates(): Record<string, boolean> {
+    return this._context.workspaceState.get<Record<string, boolean>>(ScopeService._AUTO_KEY) ?? {};
+  }
+
+  /** Whether this asset auto-updates to newer registry versions. Default: false. */
+  getAutoUpdate(assetId: string): boolean {
+    return this._autoUpdates()[assetId] === true;
+  }
+
+  async setAutoUpdate(assetId: string, enabled: boolean): Promise<void> {
+    await this._context.workspaceState.update(ScopeService._AUTO_KEY, {
+      ...this._autoUpdates(),
+      [assetId]: enabled,
+    });
+  }
 }
 
 export const SCOPE_ICONS: Record<AssetScope, string> = {
