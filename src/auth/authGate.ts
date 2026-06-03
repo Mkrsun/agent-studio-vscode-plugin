@@ -129,6 +129,7 @@ class AuthenticatedSurface {
       vscode.commands.registerCommand(COMMANDS.OPEN_MARKETPLACE, (f?: MarketplacePreFilter) => this.openMarketplace(f)),
       vscode.commands.registerCommand(COMMANDS.EXPORT_TO_COPILOT, () => this.exportToCopilot()),
       vscode.commands.registerCommand(COMMANDS.SUBMIT_USAGE, () => this.analytics.submitNow()),
+      vscode.commands.registerCommand(COMMANDS.ANALYTICS_STATUS, () => this.analytics.showStatus()),
       vscode.commands.registerCommand(COMMANDS.INSTALL_PLUGIN, () => this.installPlugin()),
       vscode.commands.registerCommand(COMMANDS.UNINSTALL_PLUGIN, (node?: InstalledPluginNode) => this.uninstallPlugin(node)),
     ];

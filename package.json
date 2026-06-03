@@ -2,7 +2,7 @@
   "name": "agent-studio",
   "displayName": "Agent Studio",
   "description": "GitHub Copilot agent framework: marketplace web UI + asset inspector (sidebar navigator) + multi-phase chat workflows",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "publisher": "agent-studio",
   "repository": {
     "type": "git",
@@ -155,6 +155,11 @@
         "command": "agentStudio.showLogs",
         "title": "Agent Studio: Show Logs",
         "icon": "$(output)"
+      },
+      {
+        "command": "agentStudio.analyticsStatus",
+        "title": "Agent Studio: Analytics Status",
+        "icon": "$(pulse)"
       }
     ],
     "menus": {
@@ -224,6 +229,10 @@
         },
         {
           "command": "agentStudio.showLogs"
+        },
+        {
+          "command": "agentStudio.analyticsStatus",
+          "when": "agentStudio.authenticated"
         },
         {
           "command": "agentStudio.openMarketplace",

@@ -6,7 +6,7 @@ import { CONFIG_KEYS } from '../constants';
 import { resolveIdentity, DevIdentity } from './identity';
 import { MetricsCollector, UsageEvent, AssetEvent } from './metricsCollector';
 import { pushUsageFiles, UsageFile } from './usageSubmitter';
-import { log, warn as logWarn, error as logError } from '../services/logger';
+import { log, warn as logWarn, error as logError, showLogs as showLogsChannel } from '../services/logger';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TICK_MS = 6 * 60 * 60 * 1000; // re-import OTel + maybe submit, every 6h
@@ -86,6 +86,44 @@ export class AnalyticsService implements vscode.Disposable {
     }
     await this.importCopilotOtel();
     await this.submit(true);
+  }
+
+  /**
+   * Command handler: print a full diagnostic of the analytics pipeline to the
+   * output channel (and a one-line toast) — the place to look when asking
+   * "is data being gathered, and is Copilot's OTel export actually flowing?".
+   */
+  async showStatus(): Promise<void> {
+    const enabled = this.config.isAnalyticsEnabled();
+    const otelExists = this.otelFile ? await this.fileSize(this.otelFile) : -1;
+    const offset = this.context.globalState.get<number>(OTEL_OFFSET_KEY) ?? 0;
+    const last = this.context.globalState.get<number>(LAST_SUBMIT_KEY) ?? 0;
+    const files = this.collector ? await this.collectFiles() : [];
+    const rows = files.reduce((n, f) => n + Buffer.from(f.contentB64, 'base64').toString('utf8').split('\n').filter(Boolean).length, 0);
+
+    log('── Analytics status ───────────────────────────────', 'analytics');
+    log(`enabled:        ${enabled}`, 'analytics');
+    log(`devId:          ${this.identity?.devId ?? '(none)'}`, 'analytics');
+    log(`country/locale: ${this.identity?.country || '?'} / ${this.identity?.locale || '?'} (${this.identity?.timezone || '?'})`, 'analytics');
+    log(`analyticsRepo:  ${this.config.getAnalyticsRepo() || '(unset — collecting locally only)'}`, 'analytics');
+    log(`autoSubmit:     ${this.config.isAnalyticsAutoSubmit()}   lastSubmit: ${last ? new Date(last).toISOString() : 'never'}`, 'analytics');
+    log(`Copilot OTel:   ${this.otelFile || '(disabled)'}`, 'analytics');
+    log(`  → file:       ${otelExists < 0 ? 'NOT created by Copilot yet' : `${otelExists} bytes`}   imported offset: ${offset}`, 'analytics');
+    log(`buffered:       ${files.length} file(s), ${rows} metric row(s)`, 'analytics');
+    log('───────────────────────────────────────────────────', 'analytics');
+    showLogsChannel();
+
+    vscode.window.showInformationMessage(
+      `Agent Studio analytics: ${rows} local row(s); Copilot OTel ${otelExists < 0 ? 'not flowing yet (see logs)' : `${otelExists}B`}.`,
+    );
+  }
+
+  private async fileSize(fsPath: string): Promise<number> {
+    try {
+      return (await vscode.workspace.fs.stat(vscode.Uri.file(fsPath))).size;
+    } catch {
+      return -1;
+    }
   }
 
   // ── Internals ───────────────────────────────────────────────────────────────
@@ -194,9 +232,13 @@ export class AnalyticsService implements vscode.Disposable {
     }
     const target = path.join(os.homedir(), '.copilot-otel', 'usage.jsonl');
     try {
+      // Create the directory so Copilot can write into it (it may not mkdir -p).
+      await vscode.workspace.fs.createDirectory(vscode.Uri.file(path.dirname(target)));
       await cfg.update(COPILOT_OTEL_SETTING, target, vscode.ConfigurationTarget.Global);
       this.otelFile = target;
       log(`Enabled Copilot OTel token export → ${target}`, 'analytics');
+      log('NOTE: Copilot may only start writing after a window reload, and only if your', 'analytics');
+      log('      Copilot build supports this export. Run "Agent Studio: Analytics Status" to check.', 'analytics');
     } catch (e) {
       logWarn('Could not enable Copilot OTel export (continuing without true token data).', 'analytics');
     }

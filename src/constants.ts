@@ -22,6 +22,7 @@ export const COMMANDS = {
   SIGN_OUT: 'agentStudio.signOut',
   SHOW_AUTH_STATUS: 'agentStudio.showAuthStatus',
   SHOW_LOGS: 'agentStudio.showLogs',
+  ANALYTICS_STATUS: 'agentStudio.analyticsStatus',
 } as const;
 
 export const CONTEXT_KEYS = {
