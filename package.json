@@ -2,7 +2,7 @@
   "name": "agent-studio",
   "displayName": "Agent Studio",
   "description": "GitHub Copilot agent framework: marketplace web UI + asset inspector (sidebar navigator) + multi-phase chat workflows",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "agent-studio",
   "repository": {
     "type": "git",

@@ -10,7 +10,6 @@ import { CopilotExporter } from '../services/copilotExporter';
 import { McpInstaller } from '../marketplace/mcpInstaller';
 import { PluginRegistry } from '../marketplace/pluginRegistry';
 import { InstalledPluginNode } from '../inspector/inspectorTreeItem';
-import { AssetInstaller } from '../marketplace/installer';
 import { MarketplaceService } from '../marketplace/marketplaceService';
 import { autoUpdateAssets } from '../marketplace/assetAutoUpdate';
 import { submitUsage } from '../analytics/usageSubmitter';
@@ -19,183 +18,170 @@ import { AuthService } from './authService';
 import { enforceLatestVersion } from './updateChecker';
 
 /**
- * Registers all feature surfaces that should exist only for authenticated users.
- * Returns the disposables for teardown on sign-out.
+ * Registers every feature surface that should exist only for authenticated users
+ * and returns the disposables for teardown on sign-out.
  *
- * `authService` may be null when the extension runs in dev-bypass mode.
+ * `authService` is null in dev-bypass mode (no token available).
  */
-export async function registerAuthenticatedSurface(
+export function registerAuthenticatedSurface(
   context: vscode.ExtensionContext,
   authService: AuthService | null,
   configService: ConfigService,
 ): Promise<vscode.Disposable[]> {
-  const disposables: vscode.Disposable[] = [];
+  return new AuthenticatedSurface(context, authService, configService).build();
+}
 
-  // ── Services ──────────────────────────────────────────────────────────────
-  const getToken = authService
-    ? () => authService.getAccessToken()
-    : () => Promise.resolve<string | null>(null);
+/**
+ * Owns the services + commands of the authenticated surface. Each command is a
+ * named method (not an inline closure), so this file reads as a table of
+ * contents in `build()` with the details just below.
+ */
+class AuthenticatedSurface {
+  private readonly getToken: () => Promise<string | null>;
+  private readonly marketplace: MarketplaceService;
+  private readonly assets: AssetLoader;
+  private readonly scopes: ScopeService;
+  private readonly exporter: CopilotExporter;
+  private readonly mcp: McpInstaller;
+  private readonly plugins: PluginRegistry;
 
-  // ── Self-update at init: auto-installs a newer VSIX from the configured repo ──
-  // (throttled once/day internally; needs the token to read a PRIVATE update repo)
-  const currentVersion =
-    (context.extension?.packageJSON as { version?: string } | undefined)?.version ?? '0.0.0';
-  await enforceLatestVersion(context, currentVersion, configService, { getToken });
+  constructor(
+    private readonly context: vscode.ExtensionContext,
+    private readonly authService: AuthService | null,
+    private readonly config: ConfigService,
+  ) {
+    this.getToken = authService
+      ? () => authService.getAccessToken()
+      : () => Promise.resolve<string | null>(null);
+    this.marketplace = new MarketplaceService(config, this.getToken);
+    this.assets = new AssetLoader(context, config, this.marketplace);
+    this.scopes = new ScopeService(context);
+    this.exporter = new CopilotExporter(this.assets);
+    this.mcp = new McpInstaller();
+    this.plugins = new PluginRegistry(context);
+  }
 
-  const marketplaceService = new MarketplaceService(configService, getToken);
-  disposables.push(marketplaceService);
+  /** Self-update, load content, then wire the tree, participant, and commands. */
+  async build(): Promise<vscode.Disposable[]> {
+    await this.selfUpdate();
+    await this.marketplace.initialize();
+    await this.loadAndAutoUpdate();
 
-  await marketplaceService.initialize();
+    const inspector = new InspectorProvider(this.assets, this.scopes, this.plugins, this.mcp, this.marketplace);
 
-  const assetLoader = new AssetLoader(context, configService, marketplaceService);
-  const scopeService = new ScopeService(context);
-  const copilotExporter = new CopilotExporter(assetLoader);
-  const mcpInstaller = new McpInstaller();
-  const pluginRegistry = new PluginRegistry(context);
-  const assetInstaller = new AssetInstaller(context, assetLoader, configService, marketplaceService);
+    return [
+      this.marketplace,
+      this.scopes,
+      this.marketplace.onDidChangeCatalog(() => this.onCatalogChanged()),
+      this.createInspectorTree(inspector),
+      registerParticipant(this.context, this.assets, this.scopes, this.config, this.authService),
+      ...registerInspectorCommands(this.context, this.assets, inspector, this.config, this.scopes, this.exporter, this.marketplace),
+      ...this.registerCommands(),
+    ];
+  }
 
-  await assetLoader.loadAll();
-  if (configService.isAssetAutoUpdate()) {
-    const n = await autoUpdateAssets(assetLoader, scopeService, copilotExporter);
-    if (n > 0) {
-      vscode.window.showInformationMessage(
-        `Agent Studio: auto-updated ${n} asset(s) to the latest version.`,
-      );
+  // ── Startup steps ───────────────────────────────────────────────────────────
+
+  /** Auto-install a newer VSIX from the update repo (throttled once/day). */
+  private async selfUpdate(): Promise<void> {
+    const currentVersion =
+      (this.context.extension?.packageJSON as { version?: string } | undefined)?.version ?? '0.0.0';
+    await enforceLatestVersion(this.context, currentVersion, this.config, { getToken: this.getToken });
+  }
+
+  private async loadAndAutoUpdate(): Promise<void> {
+    await this.assets.loadAll();
+    const updated = this.config.isAssetAutoUpdate()
+      ? await autoUpdateAssets(this.assets, this.scopes, this.exporter)
+      : 0;
+    if (updated > 0) {
+      vscode.window.showInformationMessage(`Agent Studio: auto-updated ${updated} asset(s) to the latest version.`);
     }
   }
 
-  // Reload assets whenever the marketplace catalog refreshes; auto-update if enabled.
-  disposables.push(
-    marketplaceService.onDidChangeCatalog(async () => {
-      await assetLoader.loadAll();
-      if (configService.isAssetAutoUpdate()) {
-        await autoUpdateAssets(assetLoader, scopeService, copilotExporter);
-      }
-    }),
-  );
+  /** Reload (and auto-update) whenever a marketplace catalog refreshes. */
+  private async onCatalogChanged(): Promise<void> {
+    await this.assets.loadAll();
+    if (this.config.isAssetAutoUpdate()) {
+      await autoUpdateAssets(this.assets, this.scopes, this.exporter);
+    }
+  }
 
-  // ── TreeView: Inspector (asset-hierarchy navigator) ───────────────────────
-  const inspectorProvider = new InspectorProvider(
-    assetLoader,
-    scopeService,
-    pluginRegistry,
-    mcpInstaller,
-    marketplaceService,
-  );
-  const inspectorTreeView = vscode.window.createTreeView(VIEW_IDS.INSPECTOR, {
-    treeDataProvider: inspectorProvider,
-    showCollapseAll: true,
-  });
-  disposables.push(inspectorTreeView);
+  private createInspectorTree(provider: InspectorProvider): vscode.Disposable {
+    return vscode.window.createTreeView(VIEW_IDS.INSPECTOR, {
+      treeDataProvider: provider,
+      showCollapseAll: true,
+    });
+  }
 
-  // ── Chat Participant ──────────────────────────────────────────────────────
-  disposables.push(
-    registerParticipant(context, assetLoader, scopeService, configService, authService),
-  );
+  // ── Commands ────────────────────────────────────────────────────────────────
 
-  // ── Inspector Commands ────────────────────────────────────────────────────
-  disposables.push(
-    ...registerInspectorCommands(
-      context,
-      assetLoader,
-      inspectorProvider,
-      configService,
-      scopeService,
-      copilotExporter,
-      marketplaceService,
-    ),
-  );
+  private registerCommands(): vscode.Disposable[] {
+    return [
+      vscode.commands.registerCommand(COMMANDS.OPEN_MARKETPLACE, (f?: MarketplacePreFilter) => this.openMarketplace(f)),
+      vscode.commands.registerCommand(COMMANDS.EXPORT_TO_COPILOT, () => this.exportToCopilot()),
+      vscode.commands.registerCommand(COMMANDS.SUBMIT_USAGE, () => submitUsage(this.config.getAnalyticsRepo(), this.getToken)),
+      vscode.commands.registerCommand(COMMANDS.INSTALL_PLUGIN, () => this.installPlugin()),
+      vscode.commands.registerCommand(COMMANDS.UNINSTALL_PLUGIN, (node?: InstalledPluginNode) => this.uninstallPlugin(node)),
+    ];
+  }
 
-  // ── Commands ──────────────────────────────────────────────────────────────
-  disposables.push(
-    vscode.commands.registerCommand(
-      COMMANDS.OPEN_MARKETPLACE,
-      (preFilter?: MarketplacePreFilter) => {
-        MarketplacePanel.createOrShow(
-          context,
-          assetLoader,
-          configService,
-          scopeService,
-          pluginRegistry,
-          marketplaceService,
-          preFilter,
-        );
-      },
-    ),
-    vscode.commands.registerCommand(COMMANDS.EXPORT_TO_COPILOT, async () => {
-      await vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: 'Agent Studio: Exporting to Copilot…',
-          cancellable: false,
-        },
-        async () => {
-          const repoIds = scopeService.getRepoScopedIds();
-          const result = await copilotExporter.exportAll(
-            repoIds.length > 0 ? repoIds : undefined,
-          );
-          if (!result.ok) {
-            vscode.window.showErrorMessage(`Export failed: ${result.error}`);
-            return;
-          }
-          const count = result.written?.length ?? 0;
-          const action = await vscode.window.showInformationMessage(
-            `✅ Exported ${count} files to .github/  — Copilot will now use your repo-scoped skills, agents, and instructions natively.`,
-            'Show Files',
-          );
-          if (action === 'Show Files') {
-            const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
-            if (wsRoot) {
-              vscode.commands.executeCommand(
-                'revealInExplorer',
-                vscode.Uri.joinPath(wsRoot, '.github'),
-              );
-            }
-          }
-        },
-      );
-    }),
-    vscode.commands.registerCommand(COMMANDS.SUBMIT_USAGE, () =>
-      submitUsage(configService.getAnalyticsRepo(), getToken),
-    ),
-  );
+  private openMarketplace(preFilter?: MarketplacePreFilter): void {
+    MarketplacePanel.createOrShow(this.context, this.assets, this.config, this.scopes, this.plugins, this.marketplace, preFilter);
+  }
 
-  // ── Plugin commands ───────────────────────────────────────────────────────
-  disposables.push(
-    vscode.commands.registerCommand(COMMANDS.INSTALL_PLUGIN, async (_node?: InstalledPluginNode) => {
-      vscode.commands.executeCommand(COMMANDS.OPEN_MARKETPLACE);
-      vscode.window.showInformationMessage('Browse plugins in the Marketplace → Plugins tab.');
-    }),
-    vscode.commands.registerCommand(COMMANDS.UNINSTALL_PLUGIN, async (node?: InstalledPluginNode) => {
-      const pluginName = node?.record.name ?? (await _pickInstalledPlugin(pluginRegistry));
-      if (!pluginName) return;
-      await pluginRegistry.uninstall(pluginName);
-      vscode.window.showInformationMessage(
-        `🗑 "${pluginName}" uninstalled. The terminal ran \`copilot plugin uninstall ${pluginName}\`.`,
-      );
-    }),
-  );
+  private exportToCopilot(): Thenable<void> {
+    return vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: 'Agent Studio: Exporting to Copilot…', cancellable: false },
+      () => this.runExport(),
+    );
+  }
 
-  // Dispose scope service when surface tears down
-  disposables.push(scopeService);
+  private async runExport(): Promise<void> {
+    const repoIds = this.scopes.getRepoScopedIds();
+    const result = await this.exporter.exportAll(repoIds.length > 0 ? repoIds : undefined);
+    if (!result.ok) {
+      vscode.window.showErrorMessage(`Export failed: ${result.error}`);
+      return;
+    }
+    const count = result.written?.length ?? 0;
+    const action = await vscode.window.showInformationMessage(
+      `✅ Exported ${count} files to .github/ — Copilot will now use your repo-scoped skills, agents, and instructions natively.`,
+      'Show Files',
+    );
+    if (action === 'Show Files') this.revealGithubFolder();
+  }
 
-  return disposables;
+  private revealGithubFolder(): void {
+    const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
+    if (wsRoot) vscode.commands.executeCommand('revealInExplorer', vscode.Uri.joinPath(wsRoot, '.github'));
+  }
+
+  private installPlugin(): void {
+    vscode.commands.executeCommand(COMMANDS.OPEN_MARKETPLACE);
+    vscode.window.showInformationMessage('Browse plugins in the Marketplace → Plugins tab.');
+  }
+
+  private async uninstallPlugin(node?: InstalledPluginNode): Promise<void> {
+    const pluginName = node?.record.name ?? (await pickInstalledPlugin(this.plugins));
+    if (!pluginName) return;
+    await this.plugins.uninstall(pluginName);
+    vscode.window.showInformationMessage(
+      `🗑 "${pluginName}" uninstalled. The terminal ran \`copilot plugin uninstall ${pluginName}\`.`,
+    );
+  }
 }
 
-async function _pickInstalledPlugin(registry: PluginRegistry): Promise<string | undefined> {
+/** Quick-pick prompt to choose an installed plugin to uninstall. */
+async function pickInstalledPlugin(registry: PluginRegistry): Promise<string | undefined> {
   const installed = registry.getInstalled();
   if (installed.length === 0) {
     vscode.window.showInformationMessage('No plugins installed yet.');
     return undefined;
   }
-  const items = installed.map((p) => ({
-    label: p.name,
-    description: `v${p.version}`,
-    detail: p.description,
-  }));
-  const picked = await vscode.window.showQuickPick(items, {
-    placeHolder: 'Select a plugin to uninstall',
-    matchOnDetail: true,
-  });
+  const picked = await vscode.window.showQuickPick(
+    installed.map((p) => ({ label: p.name, description: `v${p.version}`, detail: p.description })),
+    { placeHolder: 'Select a plugin to uninstall', matchOnDetail: true },
+  );
   return picked?.label;
 }
