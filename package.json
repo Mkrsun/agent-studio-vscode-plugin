@@ -117,6 +117,11 @@
         "icon": "$(cloud-upload)"
       },
       {
+        "command": "agentStudio.submitUsage",
+        "title": "Agent Studio: Submit Token Usage to Analytics",
+        "icon": "$(graph)"
+      },
+      {
         "command": "agentStudio.installPlugin",
         "title": "Install Plugin",
         "icon": "$(cloud-download)"
@@ -200,6 +205,7 @@
         { "command": "agentStudio.showAuthStatus" },
         { "command": "agentStudio.openMarketplace", "when": "agentStudio.authenticated" },
         { "command": "agentStudio.exportToCopilot", "when": "agentStudio.authenticated" },
+        { "command": "agentStudio.submitUsage",     "when": "agentStudio.authenticated" },
         { "command": "agentStudio.refreshInspector",  "when": "agentStudio.authenticated" },
         { "command": "agentStudio.enableAsset",     "when": "agentStudio.authenticated" },
         { "command": "agentStudio.disableAsset",    "when": "agentStudio.authenticated" },
@@ -228,12 +234,7 @@
             }
           },
           "default": [
-            { "id": "regional", "label": "Regional LatAm",  "repo": "MetLife-Global/regional-marketplace" },
-            { "id": "chile",    "label": "Chile",            "repo": "MetLife-Global/chile-marketplace" },
-            { "id": "brasil",   "label": "Brasil",           "repo": "MetLife-Global/brasil-marketplace" },
-            { "id": "mexico",   "label": "México",           "repo": "MetLife-Global/mexico-marketplace" },
-            { "id": "argentina","label": "Argentina",        "repo": "MetLife-Global/argentina-marketplace" },
-            { "id": "colombia", "label": "Colombia",         "repo": "MetLife-Global/colombia-marketplace" }
+            { "id": "agentic-studio", "label": "Agentic Studio Assets", "repo": "Mkrsun/agentic-studio-assets" }
           ]
         },
         "agentStudio.workspaceAssetsFolder": {
