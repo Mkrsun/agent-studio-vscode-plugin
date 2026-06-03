@@ -4,21 +4,24 @@ import { AssetLoader } from './assetLoader';
 
 /**
  * Exports Agent Studio assets into GitHub Copilot's native `.github/` structure,
- * following VS Code's custom-instructions conventions: ONE file per asset,
- * organized into per-marketplace folders so nothing bloats a single file.
+ * following VS Code's custom-instructions conventions: ONE file per asset, named
+ * by the asset itself and consolidated into the default flat locations.
  *
- * Layout (ns = the asset's marketplaceId, or "agent-studio" when unknown):
- *   Skill       → .github/prompts/<ns>/<id>.prompt.md          (reusable prompt)
- *   Workflow    → .github/prompts/<ns>/<id>.workflow.prompt.md  (guided prompt)
- *   Agent       → .github/chatmodes/<ns>/<id>.chatmode.md       (custom chat mode)
- *   Instruction → .github/instructions/<ns>/<id>.instructions.md (applyTo glob)
- *   Hook        → .github/instructions/<ns>/<id>.hook.instructions.md (applyTo '**')
+ * Layout (keyed by the asset's globally-unique id):
+ *   Skill       → .github/prompts/<id>.prompt.md          (reusable prompt)
+ *   Workflow    → .github/prompts/<id>.prompt.md          (guided prompt)
+ *   Agent       → .github/chatmodes/<id>.chatmode.md      (custom chat mode)
+ *   Instruction → .github/instructions/<id>.instructions.md (applyTo from scope)
+ *   Hook        → .github/instructions/<id>.instructions.md (applyTo '**')
  *
- * VS Code searches these folders recursively, and each instruction file's
- * `applyTo` is relative to the workspace root — so per-marketplace subfolders are
- * safe and keep one team's/plugin's assets cleanly grouped. We deliberately do
- * NOT generate a monolithic `.github/copilot-instructions.md`; a previously
- * generated one is removed on the next export (see _cleanupLegacy).
+ * WHY flat-by-asset, not per-marketplace folders: marketplaces are *sources*, but
+ * a locally-installed asset is just a local asset. These are VS Code's DEFAULT
+ * discovery locations, so a flat tree is the most reliable (no dependence on
+ * recursive-subfolder discovery). The registry guarantees unique ids, so there
+ * are no in-folder collisions; if two marketplaces share an id, they consolidate
+ * to one file (last install wins) — provenance is preserved via the `source`
+ * frontmatter key (VS Code ignores unknown keys). We do NOT generate a
+ * monolithic `.github/copilot-instructions.md`.
  */
 export class CopilotExporter {
   /** Marker we stamp into generated files so we only ever clean up our own output. */
@@ -45,9 +48,6 @@ export class CopilotExporter {
       return true;
     });
 
-    // Migrate away from the old monolith + flat `as-*` files before re-exporting.
-    await this._cleanupLegacy(root);
-
     const written: string[] = [];
     for (const asset of assets) {
       const path = this.getAssetExportPath(asset);
@@ -57,6 +57,10 @@ export class CopilotExporter {
       written.push(path);
     }
 
+    // Reconcile: remove any of OUR previously-generated files that are no longer
+    // active (legacy `as-*` flat files, old per-marketplace subfolders, the
+    // monolith) so the local set always matches the installed set.
+    await this._reconcile(root, new Set(written));
     return { ok: true, written };
   }
 
@@ -67,19 +71,19 @@ export class CopilotExporter {
    * hooks — now emits its OWN file (no aggregation), namespaced by marketplace.
    */
   getAssetExportPath(asset: Asset): string | undefined {
-    const ns = this._namespace(asset);
+    const id = this._slug(asset.id);
     switch (asset.type) {
-      case 'skill':       return `.github/prompts/${ns}/${asset.id}.prompt.md`;
-      case 'workflow':    return `.github/prompts/${ns}/${asset.id}.workflow.prompt.md`;
-      case 'agent':       return `.github/chatmodes/${ns}/${asset.id}.chatmode.md`;
-      case 'instruction': return `.github/instructions/${ns}/${asset.id}.instructions.md`;
-      case 'hook':        return `.github/instructions/${ns}/${asset.id}.hook.instructions.md`;
+      case 'skill':       return `.github/prompts/${id}.prompt.md`;
+      case 'workflow':    return `.github/prompts/${id}.prompt.md`;
+      case 'agent':       return `.github/chatmodes/${id}.chatmode.md`;
+      case 'instruction': return `.github/instructions/${id}.instructions.md`;
+      case 'hook':        return `.github/instructions/${id}.instructions.md`;
       default:            return undefined;
     }
   }
 
-  /** Write a single asset's file. No aggregated file to keep in sync anymore. */
-  async exportOne(assetId: string, _activeIds: string[]): Promise<ExportResult> {
+  /** Write a single asset's file, then reconcile so stale variants are pruned. */
+  async exportOne(assetId: string, activeIds: string[]): Promise<ExportResult> {
     const root = this._getWorkspaceRoot();
     if (!root) return { ok: false, error: 'No workspace folder is open.' };
 
@@ -91,26 +95,40 @@ export class CopilotExporter {
     if (!path || content === undefined) return { ok: true, written: [] };
 
     await this._writeNested(root, path, content);
+    await this._reconcile(root, this._keepPaths(activeIds));
     return { ok: true, written: [path] };
   }
 
-  /** Remove a single asset's file (tries the current and legacy flat paths). */
-  async removeOne(assetId: string, _activeIds: string[]): Promise<ExportResult> {
+  /** Remove a single asset's file, then reconcile against the remaining active set. */
+  async removeOne(assetId: string, activeIds: string[]): Promise<ExportResult> {
     const root = this._getWorkspaceRoot();
     if (!root) return { ok: false, error: 'No workspace folder is open.' };
 
     const asset = this.assetLoader.getById(assetId);
     if (!asset) return { ok: false, error: `Asset "${assetId}" not found.` };
 
+    const target = this.getAssetExportPath(asset);
     const removed: string[] = [];
-    for (const path of [this.getAssetExportPath(asset), ...this._legacyPaths(asset)]) {
-      if (!path) continue;
+    if (target) {
       try {
-        await vscode.workspace.fs.delete(vscode.Uri.joinPath(root, path));
-        removed.push(path);
+        await vscode.workspace.fs.delete(vscode.Uri.joinPath(root, target));
+        removed.push(target);
       } catch { /* not present */ }
     }
+    // Sweep any legacy/per-marketplace copies of other inactive assets too.
+    await this._reconcile(root, this._keepPaths(activeIds.filter((id) => id !== assetId)));
     return { ok: true, written: removed };
+  }
+
+  /** The flat target paths of all enabled assets in `activeIds` (the "keep" set). */
+  private _keepPaths(activeIds: string[]): Set<string> {
+    const keep = new Set<string>();
+    for (const a of this.assetLoader.getAll()) {
+      if (a.enabled !== 'enabled' || !activeIds.includes(a.id)) continue;
+      const p = this.getAssetExportPath(a);
+      if (p) keep.add(p);
+    }
+    return keep;
   }
 
   /** Render a single asset to its `.github/` file body, or `undefined` if N/A. */
@@ -213,6 +231,7 @@ export class CopilotExporter {
       `name: '${this._escapeFrontmatter(inst.name)}'`,
       `description: '${this._escapeFrontmatter(inst.description)}'`,
       `applyTo: '${applyTo}'`,
+      ...(inst.marketplaceId ? [`source: '${this._slug(inst.marketplaceId)}'`] : []),
       `---`,
       CopilotExporter.MARKER,
       ``,
@@ -236,6 +255,7 @@ export class CopilotExporter {
       `name: '${this._escapeFrontmatter(hook.name)}'`,
       `description: '${this._escapeFrontmatter(hook.description)}'`,
       `applyTo: '**'`,
+      ...(hook.marketplaceId ? [`source: '${this._slug(hook.marketplaceId)}'`] : []),
       `---`,
       CopilotExporter.MARKER,
       ``,
@@ -290,36 +310,59 @@ export class CopilotExporter {
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
-  /** Per-asset folder: the marketplace it came from, or a stable default. */
-  private _namespace(asset: Asset): string {
-    return this._slug(asset.marketplaceId || 'agent-studio');
-  }
-
   private _slug(s: string): string {
-    return s.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'agent-studio';
+    return s.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'asset';
   }
 
-  /** Pre-refactor flat paths, tried on uninstall so old installs clean up too. */
-  private _legacyPaths(asset: Asset): string[] {
-    switch (asset.type) {
-      case 'skill':       return [`.github/prompts/as-skill-${asset.id}.prompt.md`];
-      case 'workflow':    return [`.github/prompts/as-workflow-${asset.id}.prompt.md`];
-      case 'agent':       return [`.github/chatmodes/as-agent-${asset.id}.chatmode.md`];
-      case 'instruction': return [`.github/instructions/as-inst-${asset.id}.instructions.md`];
-      default:            return [];
+  /**
+   * Reconcile the local `.github/` asset files with the desired set: delete every
+   * file WE generated (or a legacy `as-*` file) that isn't in `keep`, recursively
+   * across instructions/prompts/chatmodes, prune emptied folders, and remove the
+   * old monolithic copilot-instructions.md. Never touches files we didn't author.
+   */
+  private async _reconcile(root: vscode.Uri, keep: Set<string>): Promise<void> {
+    // Old monolith (only if we generated it).
+    const monolith = vscode.Uri.joinPath(root, '.github/copilot-instructions.md');
+    try {
+      const text = Buffer.from(await vscode.workspace.fs.readFile(monolith)).toString('utf8');
+      if (text.includes('Generated by Agent Studio') || text.includes('Repository Copilot Instructions')) {
+        await vscode.workspace.fs.delete(monolith);
+      }
+    } catch { /* absent */ }
+
+    for (const dir of ['.github/instructions', '.github/prompts', '.github/chatmodes']) {
+      await this._sweep(root, dir, keep);
     }
   }
 
-  /** Remove the old monolithic copilot-instructions.md (only if WE generated it). */
-  private async _cleanupLegacy(root: vscode.Uri): Promise<void> {
-    const legacy = vscode.Uri.joinPath(root, '.github/copilot-instructions.md');
-    try {
-      const buf = await vscode.workspace.fs.readFile(legacy);
-      const text = Buffer.from(buf).toString('utf8');
-      if (text.includes('Generated by Agent Studio') || text.includes('Repository Copilot Instructions')) {
-        await vscode.workspace.fs.delete(legacy);
+  /** Recursively delete our orphaned generated files under `relDir`; prune empty dirs. */
+  private async _sweep(root: vscode.Uri, relDir: string, keep: Set<string>): Promise<void> {
+    const base = vscode.Uri.joinPath(root, relDir);
+    let entries: [string, vscode.FileType][];
+    try { entries = await vscode.workspace.fs.readDirectory(base); } catch { return; }
+
+    for (const [name, type] of entries) {
+      const rel = `${relDir}/${name}`;
+      if (type === vscode.FileType.Directory) {
+        await this._sweep(root, rel, keep);
+        try {
+          const left = await vscode.workspace.fs.readDirectory(vscode.Uri.joinPath(root, rel));
+          if (left.length === 0) await vscode.workspace.fs.delete(vscode.Uri.joinPath(root, rel));
+        } catch { /* ignore */ }
+        continue;
       }
-    } catch { /* not present — fine */ }
+      if (type !== vscode.FileType.File) continue;
+      if (keep.has(rel)) continue;
+      if (!/\.(instructions|prompt|chatmode)\.md$/.test(name)) continue;
+
+      const isLegacyName = name.startsWith('as-');
+      try {
+        const text = Buffer.from(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(root, rel))).toString('utf8');
+        if (isLegacyName || text.includes(CopilotExporter.MARKER)) {
+          await vscode.workspace.fs.delete(vscode.Uri.joinPath(root, rel));
+        }
+      } catch { /* ignore */ }
+    }
   }
 
   private _inferTools(tags: string[]): string[] {
