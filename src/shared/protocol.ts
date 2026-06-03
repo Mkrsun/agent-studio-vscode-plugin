@@ -97,4 +97,6 @@ export type WebviewMessage =
   | { type: 'marketplace:installPlugin'; pluginName: string; marketplaceId: string }
   | { type: 'marketplace:uninstallPlugin'; pluginName: string }
   | { type: 'marketplace:addMarketplace' }
-  | { type: 'marketplace:refreshPlugins' };
+  | { type: 'marketplace:refreshPlugins' }
+  /** Relayed from the webview's global error handlers → logged to the output channel. */
+  | { type: 'webview:error'; error: string };

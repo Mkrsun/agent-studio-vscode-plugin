@@ -5,9 +5,17 @@ import { AuthState } from './auth/authTypes';
 import { registerSignInViews } from './auth/signInView';
 import { registerAuthenticatedSurface } from './auth/authGate';
 import { loadDotEnv } from './services/dotenv';
+import { initLogger, log, showLogs } from './services/logger';
 import { COMMANDS, CONFIG_KEYS, CONTEXT_KEYS } from './constants';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  // The output channel is the first thing up so everything after it is logged
+  // (open via "Agent Studio: Show Logs").
+  initLogger(context);
+  const version = (context.extension?.packageJSON as { version?: string } | undefined)?.version ?? '0.0.0';
+  log(`Activating Agent Studio v${version} (mode=${vscode.ExtensionMode[context.extensionMode]})`);
+  context.subscriptions.push(vscode.commands.registerCommand(COMMANDS.SHOW_LOGS, () => showLogs()));
+
   // Load `.env` (workspace + extension dir) into process.env BEFORE any service
   // reads an AGENT_STUDIO_* override. Real shell/CI env always wins.
   await loadDotEnv(context);

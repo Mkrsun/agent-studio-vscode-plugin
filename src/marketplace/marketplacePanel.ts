@@ -13,6 +13,7 @@ import { MarketplaceService } from './marketplaceService';
 import { AssetType } from '../models/types';
 import { getNonce } from '../utils/webviewUtils';
 import { HostMessage, WebviewMessage } from '../shared/protocol';
+import { log, error as logError } from '../services/logger';
 
 export type MarketplaceTab = 'assets' | 'plugins' | 'mcp' | 'extensions';
 export interface MarketplacePreFilter {
@@ -78,6 +79,7 @@ export class MarketplacePanel {
     this._mcpInstaller = new McpInstaller();
     this._exporter = new CopilotExporter(assetLoader);
 
+    log('Opening marketplace panel', 'marketplace');
     this._panel.webview.html = this._getHtml();
     this._panel.webview.onDidReceiveMessage((msg: WebviewMessage) => this._handle(msg));
     this._panel.onDidDispose(() => { MarketplacePanel.currentPanel = undefined; });
@@ -95,7 +97,15 @@ export class MarketplacePanel {
 
   private async _handle(msg: WebviewMessage): Promise<void> {
     switch (msg.type) {
+      case 'webview:error': {
+        // A global error from the webview (often a load-time failure that left the
+        // panel blank). Surface it in the output channel for diagnosis.
+        logError('Marketplace webview error', msg.error, 'webview');
+        return;
+      }
+
       case 'marketplace:ready': {
+        log('Webview ready — streaming catalogs', 'marketplace');
         // ── AI Assets ──────────────────────────────────────────────────────
         const initialType = this._preFilter?.assetType ?? 'all';
         const assets = this._registry.getCatalog('', initialType);
@@ -372,6 +382,28 @@ export class MarketplacePanel {
 </head>
 <body>
   <div id="root"></div>
+  <script nonce="${nonce}">
+    // Acquire the VS Code API ONCE here and share it with the bundle (which reads
+    // window.__vscodeApi instead of acquiring again). This lets these global error
+    // handlers — installed BEFORE the bundle loads — both render a visible error
+    // into #root and relay it to the extension's output channel, even if the
+    // bundle throws at load time (which would otherwise leave a blank panel).
+    var __vscode = acquireVsCodeApi();
+    window.__vscodeApi = __vscode;
+    function __report(kind, msg) {
+      try { __vscode.postMessage({ type: 'webview:error', error: kind + ': ' + msg }); } catch (e) {}
+      var r = document.getElementById('root');
+      if (r && !r.dataset.mounted) {
+        r.innerHTML = '<pre style="color:var(--vscode-errorForeground);white-space:pre-wrap;' +
+          'padding:16px;font-family:var(--vscode-editor-font-family,monospace);font-size:12px">' +
+          'Agent Studio — the marketplace UI failed to load.\n\n' + kind + ': ' +
+          String(msg).replace(/</g, '&lt;') +
+          '\n\nSee Output → "Agent Studio" for details, or reload the window.</pre>';
+      }
+    }
+    window.addEventListener('error', function (e) { __report('error', (e.error && e.error.stack) || e.message); });
+    window.addEventListener('unhandledrejection', function (e) { __report('unhandledrejection', (e.reason && e.reason.stack) || e.reason); });
+  </script>
   <script nonce="${nonce}" src="${js}"></script>
 </body>
 </html>`;
