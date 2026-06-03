@@ -48,7 +48,7 @@ class SignInTreeProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
       item.description = 'Required to use Agent Studio';
       item.tooltip = new vscode.MarkdownString(
         '**Agent Studio requires GitHub authentication.**\n\n' +
-          'You must be an active member of an authorized MetLife GitHub organization.\n\n' +
+          'You must be an active member of an authorized GitHub organization.\n\n' +
           '*Click to sign in.*',
       );
     }

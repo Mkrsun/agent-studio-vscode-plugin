@@ -161,7 +161,7 @@ export class AuthService implements vscode.Disposable {
   // ── Internals ────────────────────────────────────────────────────────────
 
   private _requiredOrgs(): string[] {
-    return this.config.get<string[]>(CONFIG_KEYS.AUTH_REQUIRED_GITHUB_ORGS) ?? [];
+    return this.config.getRequiredOrgs();
   }
 
   private async _getSession(opts: {
