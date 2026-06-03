@@ -161,9 +161,13 @@ export class ConfigService {
     return this.get<boolean>(CONFIG_KEYS.ANALYTICS_AUTO_SUBMIT) ?? true;
   }
 
-  /** Auto-enable Copilot's OTel token export so real token counts flow. Default ON. */
+  /**
+   * EXPERIMENTAL, default OFF. GitHub Copilot does NOT currently expose a local
+   * OTel token export, so enabling this only writes a (harmless) no-op setting.
+   * Kept for forward-compat if a future build — or another LM tool — adds one.
+   */
   isAutoEnableCopilotOtel(): boolean {
-    return this.get<boolean>(CONFIG_KEYS.ANALYTICS_AUTO_OTEL) ?? true;
+    return this.get<boolean>(CONFIG_KEYS.ANALYTICS_AUTO_OTEL) ?? false;
   }
 }
 

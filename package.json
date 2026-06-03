@@ -2,7 +2,7 @@
   "name": "agent-studio",
   "displayName": "Agent Studio",
   "description": "GitHub Copilot agent framework: marketplace web UI + asset inspector (sidebar navigator) + multi-phase chat workflows",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "publisher": "agent-studio",
   "repository": {
     "type": "git",
@@ -445,8 +445,8 @@
         },
         "agentStudio.analytics.autoEnableCopilotOtel": {
           "type": "boolean",
-          "default": true,
-          "description": "Enable GitHub Copilot's OpenTelemetry token export so REAL token counts can be gathered (content capture stays off). Disable to only measure Agent Studio's own usage."
+          "default": false,
+          "description": "[EXPERIMENTAL] GitHub Copilot does not currently expose a local OpenTelemetry token export, so this only writes a harmless no-op setting and produces no data. Kept for forward-compatibility. For org-wide Copilot usage use GitHub's Copilot Metrics API instead. Agent Studio's own @agent-studio token usage is always measured."
         },
         "agentStudio.assetAutoUpdate": {
           "type": "boolean",
