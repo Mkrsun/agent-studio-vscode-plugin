@@ -59,6 +59,16 @@ The service (`src/services/copilotExporter.ts`) that renders repo-scoped assets 
 Copilot files under `.github/` — one flat file per asset. The bridge from "asset" to
 "Copilot uses it."
 
+### `devId` (anonymous metrics id)
+A random per-install UUID stored in globalState, used to key submitted metrics. It groups
+a developer's own activity for per-dev insights **without** revealing identity — no name,
+login, or email is ever recorded. See `src/analytics/identity.ts` and **`agent-studio/v1`**.
+
+### `agent-studio/v1` (metrics schema)
+The NDJSON contract the extension produces and the analytics repo consumes — row kinds
+`asset` / `usage` / `copilot`, numbers + coarse tags only (anonymous). Documented in the
+analytics repo's `metrics/AGENT-STUDIO-SCHEMA.md`; rendered by `agent-studio-insights.mjs`.
+
 ### Descriptor (MarketplaceDescriptor)
 A configured marketplace: `{ id, label, repo? | localPath?, parent?, children? }`. Resolved
 by `MarketplaceService._getDescriptors()` (which flattens `children` into `parent` links).

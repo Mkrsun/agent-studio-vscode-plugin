@@ -118,55 +118,65 @@ workspace.
 
 ## ② Tool → Analytics
 
-### How usage is produced (local, $0)
+The extension gathers metrics **automatically and anonymously** post-install (auto /
+opt-out) and ships them to the analytics repo — no Actions, no `gh`, no names. Code:
+`src/analytics/{identity,metricsCollector,analyticsService,usageSubmitter,metrics}.ts`.
 
-The `token-budget` skill (installed from the content repo) ships scripts that read VS Code
-Copilot's OpenTelemetry export and write **per-(date, model)** counts as NDJSON:
+### What is collected (numbers + coarse tags only)
+
+`AnalyticsService.start()` resolves an **anonymous `devId`** (random per-install UUID — no
+name/login/email) + **country** (from VS Code locale + IDE timezone), then `MetricsCollector`
+appends NDJSON rows to the extension's global storage. Three row kinds:
+
+- **`asset`** — install / uninstall / update / **invoke** → popularity & most-used.
+- **`usage`** — the `@agent-studio` participant's own LM calls: model, input/output tokens,
+  duration, asset, command, language → **efficiency**.
+- **`copilot`** — **TRUE Copilot tokens**, imported from Copilot's OpenTelemetry export
+  (the extension auto-enables `github.copilot.chat.otel.outfile`, content capture OFF),
+  read incrementally by byte offset so nothing is double-counted.
+
+Full field-by-field contract: the analytics repo's
+[`AGENT-STUDIO-SCHEMA.md`](https://github.com/Mkrsun/meta-repo-latam-ai-intelligence-ecosystem-analytics/blob/main/analytics/metrics/AGENT-STUDIO-SCHEMA.md)
+(schema `agent-studio/v1`).
+
+### How it's submitted (auto)
 
 ```
-~/.copilot-otel/usage.jsonl   ──otel-tokens.mjs──▶   data/perf/local/<login>/<YYYY-MM>.ndjson
-```
-
-These rows are `confidence: "measured"` (true tokens) or `"estimate"` (the zero-dep
-approximator). They are **gitignored** in product repos (per-dev, regenerable).
-
-### How usage is submitted
-
-The extension command **`Agent Studio: Submit Token Usage to Analytics`**
-(`agentStudio.submitUsage`, code in `src/analytics/usageSubmitter.ts`):
-
-```
-resolve login (GET /user)
-  → read data/perf/local/<login>/*.ndjson
-  → create branch usage/<login>/<stamp>
-  → PUT each file under data/perf/local/<login>/…
+(daily, throttled)  collect globalStorage perf/<devId>/*.ndjson
+  → branch usage/<devId>/<stamp>
+  → PUT each file under data/perf/local/<devId>/…
   → POST a pull request to the analytics repo
 ```
 
-It reuses the user's **GitHub session token** — no separate PAT. The PR body states the
-data is numbers-only. The analytics repo commits these (its `data/perf/.gitignore` is a
-committed keep-file, so unlike product repos it *tracks* submitted rows).
-
-> The content repo also ships a standalone `submit-usage.mjs` for CI/headless use (it
-> wants a `GITHUB_TOKEN` PAT). The extension command and the script are twins; use whichever
-> fits.
+Reuses the user's **GitHub session token** (no PAT). The command
+**`Agent Studio: Submit Token Usage to Analytics`** (`agentStudio.submitUsage`) forces an
+immediate submit. **Fail-soft:** if `analyticsRepo` is unset or unreachable, collection
+continues locally and submission just no-ops/logs — analytics can never break activation.
+Controls: `agentStudio.analytics.{enabled,autoSubmit,autoEnableCopilotOtel}` (all default ON).
 
 ### What the analytics repo does with it
 
-`project-tokens.mjs` produces a **burndown + forecast**: it sums the current billing
-period, computes a trailing burn rate, and projects the quota-exhaustion date. Other
-scripts add git-only quality proxies and optional PR cycle-time. All zero-dependency
-(bash + git + Node stdlib).
+- **`agent-studio-insights.mjs`** → the leadership dashboard: adoption by country,
+  most-popular / most-used assets, least-efficient assets (tokens per run), and tokens by
+  model / country / language.
+- **`project-tokens.mjs`** → burndown + forecast (quota-exhaustion date).
 
-### Usage row schema (`copilot-tokens/v1`)
+Both zero-dependency (Node stdlib). The repo *tracks* submitted rows (its
+`data/perf/.gitignore` is a committed keep-file, unlike product repos which ignore them).
+
+> **Secondary path:** the `token-budget` skill also ships standalone `otel-tokens.mjs` /
+> `submit-usage.mjs` for manual/CI use (login-based, `GITHUB_TOKEN` PAT). The extension's
+> automatic pipeline above is anonymous (`devId`) and needs no PAT.
+
+### Usage row schema (`agent-studio/v1`)
 
 ```json
-{ "schema": "copilot-tokens/v1", "login": "manu", "date": "2026-06-02",
-  "model": "gpt-4o", "source": "otel", "confidence": "measured",
-  "requests": 42, "inputTokens": 150000, "outputTokens": 50000, "totalTokens": 200000 }
+{ "schema": "agent-studio/v1", "kind": "usage", "devId": "a1b2…", "country": "CL",
+  "model": "gpt-4o", "assetId": "code-review", "assetType": "skill", "languageId": "typescript",
+  "inputTokens": 1200, "outputTokens": 900, "durationMs": 3000, "date": "2026-06-02" }
 ```
 
-**Never** contains prompt or response content.
+**Anonymous** (devId only) and **never** contains prompt or response content.
 
 ---
 
@@ -198,9 +208,10 @@ All resolve `env → setting → default` (see [Configuration](./configuration.m
    Dev's VS Code ◀── fetch registry + YAML (Contents API) ──┘
         │ install → export to .github/ → Copilot uses it natively
         │
-        │ work happens; otel-tokens.mjs writes local NDJSON
-        ▼
-   Submit Usage command ─▶ PR to analytics repo ─▶ project-tokens.mjs forecast
+        │ auto, anonymous: collect asset/usage/copilot rows (devId, country)
+        ▼ daily PR (raw API)
+   analytics repo ─▶ agent-studio-insights.mjs (leadership dashboard)
+                  └▶ project-tokens.mjs (burndown + forecast)
 ```
 
 Next: [Configuration](./configuration.md) · [Subsystems](./subsystems.md) · [SDD](./SDD.md)
