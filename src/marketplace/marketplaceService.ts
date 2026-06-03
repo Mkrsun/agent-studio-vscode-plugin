@@ -98,6 +98,12 @@ export class MarketplaceService implements vscode.Disposable {
   // ── Internals ───────────────────────────────────────────────────────────────
 
   private _getDescriptors(): MarketplaceDescriptor[] {
+    // Env override wins: a single content repo for the whole studio. Lets ops
+    // point the extension at one private marketplace without touching settings.
+    const override = this._config.getMarketplaceRepoOverride();
+    if (override) {
+      return [{ id: 'agentic-studio', label: 'Agentic Studio Assets', repo: override }];
+    }
     return (
       this._config.get<MarketplaceDescriptor[]>(CONFIG_KEYS.MARKETPLACES) ?? []
     );

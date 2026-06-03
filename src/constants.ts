@@ -15,6 +15,7 @@ export const COMMANDS = {
   INSTALL_ASSET: 'agentStudio.installAsset',
   UNINSTALL_ASSET: 'agentStudio.uninstallAsset',
   EXPORT_TO_COPILOT: 'agentStudio.exportToCopilot',
+  SUBMIT_USAGE: 'agentStudio.submitUsage',
   INSTALL_PLUGIN: 'agentStudio.installPlugin',
   UNINSTALL_PLUGIN: 'agentStudio.uninstallPlugin',
   SIGN_IN: 'agentStudio.signIn',

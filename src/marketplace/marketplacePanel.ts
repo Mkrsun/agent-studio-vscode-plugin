@@ -12,26 +12,13 @@ import { CopilotExporter } from '../services/copilotExporter';
 import { MarketplaceService } from './marketplaceService';
 import { AssetType } from '../models/types';
 import { getNonce } from '../utils/webviewUtils';
+import { HostMessage, WebviewMessage } from '../shared/protocol';
 
 export type MarketplaceTab = 'assets' | 'plugins' | 'mcp' | 'extensions';
 export interface MarketplacePreFilter {
   tab?: MarketplaceTab;
   assetType?: AssetType;
 }
-
-type IncomingMsg =
-  | { type: 'marketplace:ready' }
-  | { type: 'marketplace:filterChange'; query: string; assetType: string }
-  | { type: 'marketplace:install'; assetId: string }
-  | { type: 'marketplace:update'; assetId: string }
-  | { type: 'marketplace:uninstall'; assetId: string }
-  | { type: 'marketplace:preview'; assetId: string }
-  | { type: 'marketplace:installMcp'; serverId: string }
-  | { type: 'marketplace:uninstallMcp'; serverId: string }
-  | { type: 'marketplace:installPlugin'; pluginName: string; marketplaceId: string }
-  | { type: 'marketplace:uninstallPlugin'; pluginName: string }
-  | { type: 'marketplace:addMarketplace' }
-  | { type: 'marketplace:refreshPlugins' };
 
 export class MarketplacePanel {
   static currentPanel: MarketplacePanel | undefined;
@@ -92,12 +79,12 @@ export class MarketplacePanel {
     this._exporter = new CopilotExporter(assetLoader);
 
     this._panel.webview.html = this._getHtml();
-    this._panel.webview.onDidReceiveMessage((msg: IncomingMsg) => this._handle(msg));
+    this._panel.webview.onDidReceiveMessage((msg: WebviewMessage) => this._handle(msg));
     this._panel.onDidDispose(() => { MarketplacePanel.currentPanel = undefined; });
   }
 
   /** Build the asset-state message the webview uses to pick Install / Installed / Update. */
-  private _assetStateMsg(assetId: string): Record<string, unknown> {
+  private _assetStateMsg(assetId: string): HostMessage {
     const installed = this.scopeService.getScope(assetId) === 'repo';
     const installedVersion = this.scopeService.getInstalledVersion(assetId);
     const availableVersion = this.assetLoader.getById(assetId)?.version;
@@ -106,29 +93,29 @@ export class MarketplacePanel {
     return { type: 'marketplace:assetState', assetId, installed, installedVersion, availableVersion, hasUpdate };
   }
 
-  private async _handle(msg: IncomingMsg): Promise<void> {
+  private async _handle(msg: WebviewMessage): Promise<void> {
     switch (msg.type) {
       case 'marketplace:ready': {
         // ── AI Assets ──────────────────────────────────────────────────────
         const initialType = this._preFilter?.assetType ?? 'all';
         const assets = this._registry.getCatalog('', initialType);
-        this._post({ type: 'marketplace:loadCatalog', assets } as any);
+        this._post({ type: 'marketplace:loadCatalog', assets });
 
         // Send state for the FULL catalog (not just the visible filter) so Install/
         // Update status is correct on every tab.
         for (const entry of this._registry.getCatalog('', 'all')) {
-          this._post(this._assetStateMsg(entry.id) as any);
+          this._post(this._assetStateMsg(entry.id));
         }
 
         // ── MCP Servers ────────────────────────────────────────────────────
-        this._post({ type: 'marketplace:loadMcp' as any, servers: MCP_CATALOG } as any);
+        this._post({ type: 'marketplace:loadMcp', servers: MCP_CATALOG });
         for (const server of MCP_CATALOG) {
           const installed = await this._mcpInstaller.isInstalled(server.id);
-          this._post({ type: 'marketplace:mcpState' as any, serverId: server.id, installed } as any);
+          this._post({ type: 'marketplace:mcpState', serverId: server.id, installed });
         }
 
         // ── Copilot Extensions ─────────────────────────────────────────────
-        this._post({ type: 'marketplace:loadExtensions' as any, extensions: COPILOT_EXTENSIONS_CATALOG } as any);
+        this._post({ type: 'marketplace:loadExtensions', extensions: COPILOT_EXTENSIONS_CATALOG });
 
         // ── Plugin marketplaces (fetch async, send when ready) ────────────
         this._sendPluginCatalog();
@@ -143,7 +130,7 @@ export class MarketplacePanel {
           msg.query,
           msg.assetType as AssetType | 'all',
         );
-        this._post({ type: 'marketplace:loadCatalog', assets } as any);
+        this._post({ type: 'marketplace:loadCatalog', assets });
         break;
       }
 
@@ -167,7 +154,7 @@ export class MarketplacePanel {
           vscode.window.showErrorMessage(`${updating ? 'Update' : 'Install'} failed: ${result.error}`);
           if (!updating) await this.scopeService.setScope(msg.assetId, 'disabled');
         }
-        this._post(this._assetStateMsg(msg.assetId) as any);
+        this._post(this._assetStateMsg(msg.assetId));
         break;
       }
 
@@ -184,7 +171,7 @@ export class MarketplacePanel {
         } else {
           vscode.window.showErrorMessage(`Uninstall failed: ${result.error}`);
         }
-        this._post(this._assetStateMsg(msg.assetId) as any);
+        this._post(this._assetStateMsg(msg.assetId));
         break;
       }
 
@@ -203,7 +190,7 @@ export class MarketplacePanel {
         if (!server) return;
         try {
           await this._mcpInstaller.install(server);
-          this._post({ type: 'marketplace:mcpState' as any, serverId: server.id, installed: true } as any);
+          this._post({ type: 'marketplace:mcpState', serverId: server.id, installed: true });
           const envVars = server.env ? Object.keys(server.env) : [];
           if (envVars.length > 0) {
             vscode.window.showWarningMessage(
@@ -220,14 +207,14 @@ export class MarketplacePanel {
           }
         } catch (e) {
           vscode.window.showErrorMessage(`Failed to install MCP server: ${e}`);
-          this._post({ type: 'marketplace:mcpState' as any, serverId: server.id, installed: false } as any);
+          this._post({ type: 'marketplace:mcpState', serverId: server.id, installed: false });
         }
         break;
       }
 
       case 'marketplace:uninstallMcp': {
         await this._mcpInstaller.uninstall(msg.serverId);
-        this._post({ type: 'marketplace:mcpState' as any, serverId: msg.serverId, installed: false } as any);
+        this._post({ type: 'marketplace:mcpState', serverId: msg.serverId, installed: false });
         break;
       }
 
@@ -243,7 +230,7 @@ export class MarketplacePanel {
           return;
         }
         await this.pluginRegistry.install(match, match._marketplace);
-        this._post({ type: 'marketplace:pluginState' as any, pluginName: msg.pluginName, installed: true } as any);
+        this._post({ type: 'marketplace:pluginState', pluginName: msg.pluginName, installed: true });
         vscode.window.showInformationMessage(
           `🔌 "${msg.pluginName}" is being installed via Copilot CLI in the terminal.`,
         );
@@ -252,7 +239,7 @@ export class MarketplacePanel {
 
       case 'marketplace:uninstallPlugin': {
         await this.pluginRegistry.uninstall(msg.pluginName);
-        this._post({ type: 'marketplace:pluginState' as any, pluginName: msg.pluginName, installed: false } as any);
+        this._post({ type: 'marketplace:pluginState', pluginName: msg.pluginName, installed: false });
         vscode.window.showInformationMessage(`🗑 "${msg.pluginName}" removed.`);
         break;
       }
@@ -273,7 +260,7 @@ export class MarketplacePanel {
 
   private async _sendPluginCatalog(): Promise<void> {
     // Tell webview we're loading
-    this._post({ type: 'marketplace:pluginsLoading' as any } as any);
+    this._post({ type: 'marketplace:pluginsLoading' });
 
     const entries = await this.pluginRegistry.fetchAll();
     const installed = this.pluginRegistry.getInstalled();
@@ -301,11 +288,11 @@ export class MarketplacePanel {
       }
     }
 
-    this._post({ type: 'marketplace:loadPlugins' as any, groups: Object.values(byMarketplace) } as any);
+    this._post({ type: 'marketplace:loadPlugins', groups: Object.values(byMarketplace) });
 
     // Send installed state for each plugin
     for (const record of installed) {
-      this._post({ type: 'marketplace:pluginState' as any, pluginName: record.name, installed: true } as any);
+      this._post({ type: 'marketplace:pluginState', pluginName: record.name, installed: true });
     }
   }
 
@@ -344,7 +331,7 @@ export class MarketplacePanel {
 
   // ── Messaging ────────────────────────────────────────────────────────────
 
-  private _post(msg: object): void {
+  private _post(msg: HostMessage): void {
     this._panel.webview.postMessage(msg);
   }
 
@@ -384,76 +371,8 @@ export class MarketplacePanel {
   <title>Agent Studio Marketplace</title>
 </head>
 <body>
-<div id="app">
-  <header class="mp-header">
-    <div class="mp-header__top">
-      <span class="mp-header__icon">◈</span>
-      <h1>Agent Studio Marketplace</h1>
-    </div>
-    <div class="mp-header__controls" id="searchRow">
-      <input type="text" id="searchInput" class="mp-search" placeholder="Search assets…" autocomplete="off">
-      <select id="typeFilter" class="mp-filter">
-        <option value="all">All Types</option>
-        <option value="skill">Skills</option>
-        <option value="agent">Agents</option>
-        <option value="workflow">Workflows</option>
-        <option value="instruction">Instructions</option>
-        <option value="hook">Hooks</option>
-      </select>
-    </div>
-    <div class="mp-tabs">
-      <button class="mp-tab active" data-tab="panelAssets">AI Assets</button>
-      <button class="mp-tab" data-tab="panelPlugins">Plugins</button>
-      <button class="mp-tab" data-tab="panelMcp">MCP Servers</button>
-      <button class="mp-tab" data-tab="panelExtensions">Copilot Extensions</button>
-    </div>
-  </header>
-
-  <!-- Tab: AI Assets -->
-  <div id="panelAssets" class="mp-panel visible">
-    <div id="assetsGrid" class="mp-grid">
-      <div class="mp-loading">Loading assets…</div>
-    </div>
-  </div>
-
-  <!-- Tab: Plugins (GitHub Copilot CLI plugin packages) -->
-  <div id="panelPlugins" class="mp-panel">
-    <div class="mp-plugin-toolbar">
-      <p class="mp-subtitle">
-        Installable packages that bundle agents, skills, hooks and MCP configs.
-        Requires <code>copilot</code> CLI. Installed via <code>copilot plugin install</code>.
-      </p>
-      <div style="display:flex;gap:8px;align-items:center;">
-        <button class="btn btn-secondary" id="btnAddMarketplace">+ Add Marketplace</button>
-        <button class="btn btn-secondary" id="btnRefreshPlugins">↻ Refresh</button>
-      </div>
-    </div>
-    <div id="pluginsContainer">
-      <div class="mp-loading">Fetching marketplaces…</div>
-    </div>
-  </div>
-
-  <!-- Tab: MCP Servers -->
-  <div id="panelMcp" class="mp-panel">
-    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
-      MCP (Model Context Protocol) servers extend Copilot with tools — file access, GitHub, databases,
-      search, and more. Installed to <code>.vscode/mcp.json</code> in your workspace.
-    </p>
-    <div id="mcpGrid" class="mp-grid">
-      <div class="mp-loading">Loading MCP catalog…</div>
-    </div>
-  </div>
-
-  <!-- Tab: Copilot Extensions -->
-  <div id="panelExtensions" class="mp-panel">
-    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
-      GitHub Copilot Extensions are GitHub Apps that add <code>@extension-name</code> participants
-      to your Copilot Chat. Install them on GitHub.com and they appear automatically.
-    </p>
-    <div id="extensionsGrid"></div>
-  </div>
-</div>
-<script nonce="${nonce}" src="${js}"></script>
+  <div id="root"></div>
+  <script nonce="${nonce}" src="${js}"></script>
 </body>
 </html>`;
   }

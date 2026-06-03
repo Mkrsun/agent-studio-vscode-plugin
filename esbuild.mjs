@@ -22,12 +22,13 @@ const extensionConfig = {
 
 /** @type {import('esbuild').BuildOptions} */
 const marketplaceWebviewConfig = {
-  entryPoints: ['media/marketplace/marketplace.js'],
+  entryPoints: ['webview-ui/index.tsx'],
   bundle: true,
   outfile: 'dist/marketplace-webview.js',
   format: 'iife',
   platform: 'browser',
   target: 'es2020',
+  jsx: 'automatic',
   sourcemap: !production,
   minify: production,
 };

@@ -13,6 +13,7 @@ import { InstalledPluginNode } from '../inspector/inspectorTreeItem';
 import { AssetInstaller } from '../marketplace/installer';
 import { MarketplaceService } from '../marketplace/marketplaceService';
 import { autoUpdateAssets } from '../marketplace/assetAutoUpdate';
+import { submitUsage } from '../analytics/usageSubmitter';
 import { COMMANDS, VIEW_IDS } from '../constants';
 import { AuthService } from './authService';
 import { enforceLatestVersion } from './updateChecker';
@@ -154,6 +155,9 @@ export async function registerAuthenticatedSurface(
         },
       );
     }),
+    vscode.commands.registerCommand(COMMANDS.SUBMIT_USAGE, () =>
+      submitUsage(configService.getAnalyticsRepo(), getToken),
+    ),
   );
 
   // ── Plugin commands ───────────────────────────────────────────────────────

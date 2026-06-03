@@ -117,6 +117,11 @@
         "icon": "$(cloud-upload)"
       },
       {
+        "command": "agentStudio.submitUsage",
+        "title": "Agent Studio: Submit Token Usage to Analytics",
+        "icon": "$(graph)"
+      },
+      {
         "command": "agentStudio.installPlugin",
         "title": "Install Plugin",
         "icon": "$(cloud-download)"
@@ -200,6 +205,7 @@
         { "command": "agentStudio.showAuthStatus" },
         { "command": "agentStudio.openMarketplace", "when": "agentStudio.authenticated" },
         { "command": "agentStudio.exportToCopilot", "when": "agentStudio.authenticated" },
+        { "command": "agentStudio.submitUsage",     "when": "agentStudio.authenticated" },
         { "command": "agentStudio.refreshInspector",  "when": "agentStudio.authenticated" },
         { "command": "agentStudio.enableAsset",     "when": "agentStudio.authenticated" },
         { "command": "agentStudio.disableAsset",    "when": "agentStudio.authenticated" },
@@ -228,12 +234,7 @@
             }
           },
           "default": [
-            { "id": "regional", "label": "Regional LatAm",  "repo": "MetLife-Global/regional-marketplace" },
-            { "id": "chile",    "label": "Chile",            "repo": "MetLife-Global/chile-marketplace" },
-            { "id": "brasil",   "label": "Brasil",           "repo": "MetLife-Global/brasil-marketplace" },
-            { "id": "mexico",   "label": "México",           "repo": "MetLife-Global/mexico-marketplace" },
-            { "id": "argentina","label": "Argentina",        "repo": "MetLife-Global/argentina-marketplace" },
-            { "id": "colombia", "label": "Colombia",         "repo": "MetLife-Global/colombia-marketplace" }
+            { "id": "agentic-studio", "label": "Agentic Studio Assets", "repo": "Mkrsun/agentic-studio-assets" }
           ]
         },
         "agentStudio.workspaceAssetsFolder": {
@@ -331,17 +332,21 @@
     "build:prod": "node esbuild.mjs --production",
     "watch": "node esbuild.mjs --watch",
     "lint": "eslint src --ext ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p webview-ui/tsconfig.json --noEmit",
     "test": "vscode-test",
     "package:vsix": "vsce package --no-dependencies -o dist/agent-studio-$npm_package_version.vsix",
     "release": "gh release create v$npm_package_version dist/agent-studio-$npm_package_version.vsix --repo MetLife-Global/agent-studio-vscode-plugin --notes-file RELEASE_NOTES.md"
   },
   "dependencies": {
-    "js-yaml": "^4.1.1"
+    "js-yaml": "^4.1.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.0.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
     "@types/vscode": "^1.90.0",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
