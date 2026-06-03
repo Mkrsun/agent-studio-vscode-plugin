@@ -98,8 +98,14 @@ export class MarketplaceService implements vscode.Disposable {
   // ── Internals ───────────────────────────────────────────────────────────────
 
   private _getDescriptors(): MarketplaceDescriptor[] {
-    // Env override wins: a single content repo for the whole studio. Lets ops
-    // point the extension at one private marketplace without touching settings.
+    // Resolution order (env wins so ops/CI configure repos via .env, no settings edit):
+    //   1. AGENT_STUDIO_MARKETPLACES   — full list, "id:Label:owner/repo, …" or JSON
+    //   2. AGENT_STUDIO_MARKETPLACE_REPO — single content repo shorthand
+    //   3. agentStudio.marketplaces      — VS Code settings
+    const fromEnv = this._config.getMarketplacesFromEnv();
+    if (fromEnv.length > 0) {
+      return fromEnv.map((m) => ({ id: m.id, label: m.label, repo: m.repo }));
+    }
     const override = this._config.getMarketplaceRepoOverride();
     if (override) {
       return [{ id: 'agentic-studio', label: 'Agentic Studio Assets', repo: override }];

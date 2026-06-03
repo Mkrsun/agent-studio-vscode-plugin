@@ -55,6 +55,7 @@ export const CONFIG_KEYS = {
 export const ENV = {
   UPDATE_REPO: 'AGENT_STUDIO_UPDATE_REPO',        // owner/repo for the extension's own VSIX releases
   MARKETPLACE_REPO: 'AGENT_STUDIO_MARKETPLACE_REPO', // owner/repo of a content marketplace (quick single override)
+  MARKETPLACES: 'AGENT_STUDIO_MARKETPLACES',      // full multi-marketplace list: "id:Label:owner/repo, …" or JSON array
   ANALYTICS_REPO: 'AGENT_STUDIO_ANALYTICS_REPO',  // owner/repo of the analytics datastore
 } as const;
 

@@ -4,9 +4,14 @@ import { AuthService } from './auth/authService';
 import { AuthState } from './auth/authTypes';
 import { registerSignInViews } from './auth/signInView';
 import { registerAuthenticatedSurface } from './auth/authGate';
+import { loadDotEnv } from './services/dotenv';
 import { COMMANDS, CONFIG_KEYS, CONTEXT_KEYS } from './constants';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  // Load `.env` (workspace + extension dir) into process.env BEFORE any service
+  // reads an AGENT_STUDIO_* override. Real shell/CI env always wins.
+  await loadDotEnv(context);
+
   const configService = new ConfigService();
 
   // ── Dev-only bypass (no effect in production-installed .vsix) ─────────────

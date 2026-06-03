@@ -1,6 +1,13 @@
 import * as vscode from 'vscode';
 import { CONFIG_KEYS, ENV, DEFAULT_UPDATE_REPO } from '../constants';
 
+/** A marketplace descriptor parsed from env / settings: id + label + GitHub repo. */
+export interface EnvMarketplace {
+  id: string;
+  label: string;
+  repo: string;
+}
+
 export class ConfigService {
   get<T>(key: string): T {
     return vscode.workspace.getConfiguration().get<T>(key) as T;
@@ -109,6 +116,16 @@ export class ConfigService {
     return process.env[ENV.MARKETPLACE_REPO] || '';
   }
 
+  /**
+   * Full marketplace list from env (AGENT_STUDIO_MARKETPLACES). Returns [] when
+   * unset/empty. Accepts either a JSON array of {id,label,repo} or a comma-list
+   * of "id:Label:owner/repo" (label and id optional — see parseMarketplacesEnv).
+   * Takes precedence over the single-repo override and over settings.
+   */
+  getMarketplacesFromEnv(): EnvMarketplace[] {
+    return parseMarketplacesEnv(process.env[ENV.MARKETPLACES] || '');
+  }
+
   /** Feature flag: enterprise org-membership gating. OFF by default (any GitHub user passes). */
   requireOrgMembership(): boolean {
     return this.get<boolean>(CONFIG_KEYS.AUTH_REQUIRE_ORG) ?? false;
@@ -118,4 +135,58 @@ export class ConfigService {
   isAssetAutoUpdate(): boolean {
     return this.get<boolean>(CONFIG_KEYS.ASSET_AUTO_UPDATE) ?? true;
   }
+}
+
+/**
+ * Parse the AGENT_STUDIO_MARKETPLACES value into descriptors. Two accepted forms:
+ *
+ *   JSON array:   [{"id":"chile","label":"Chile","repo":"Org/chile-marketplace"}, …]
+ *   Comma-list:   id:Label:owner/repo, id2:Label2:owner/repo2
+ *                 - "owner/repo"                  → id+label derived from repo name
+ *                 - "id:owner/repo"               → label = id
+ *                 - "id:Label:owner/repo"         → all explicit
+ *
+ * Entries without a valid "owner/repo" are dropped. Always returns an array.
+ */
+export function parseMarketplacesEnv(raw: string): EnvMarketplace[] {
+  const value = raw.trim();
+  if (!value) return [];
+
+  if (value.startsWith('[')) {
+    try {
+      const arr = JSON.parse(value) as Array<Partial<EnvMarketplace>>;
+      return arr
+        .filter((m): m is EnvMarketplace => !!m && typeof m.repo === 'string' && m.repo.includes('/'))
+        .map((m) => ({ id: m.id || repoName(m.repo), label: m.label || m.id || repoName(m.repo), repo: m.repo }));
+    } catch {
+      return [];
+    }
+  }
+
+  return value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map(parseMarketplaceEntry)
+    .filter((m): m is EnvMarketplace => m !== null);
+}
+
+function parseMarketplaceEntry(entry: string): EnvMarketplace | null {
+  const parts = entry.split(':').map((p) => p.trim());
+  if (parts.length === 1) {
+    const repo = parts[0];
+    return repo.includes('/') ? { id: repoName(repo), label: repoName(repo), repo } : null;
+  }
+  if (parts.length === 2) {
+    const [id, repo] = parts;
+    return repo.includes('/') ? { id, label: id, repo } : null;
+  }
+  // 3+ parts: id : label : repo  (rejoin any trailing colons into repo, just in case)
+  const [id, label, ...rest] = parts;
+  const repo = rest.join(':');
+  return repo.includes('/') ? { id, label, repo } : null;
+}
+
+function repoName(repo: string): string {
+  return repo.split('/')[1] ?? repo;
 }
