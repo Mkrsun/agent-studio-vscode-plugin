@@ -1,11 +1,24 @@
+# Only the bundled output (dist/*.js) + runtime media ship. Everything below is
+# source, tooling, or maps and must NOT be in the .vsix.
 .vscode/**
-src/**
-media/**/*.map
+.github/**
 node_modules/**
-*.map
-.gitignore
-tsconfig.json
-esbuild.mjs
+
+# Source — bundled into dist/ by esbuild
+src/**
+webview-ui/**
+scripts/**
 **/*.ts
-!dist/**
-!src/assets/**
+**/*.tsx
+
+# Source maps (incl. dist/*.map)
+**/*.map
+
+# Build & repo config
+esbuild.mjs
+tsconfig*.json
+.eslintrc*
+.gitignore
+.vscodeignore
+.env
+.env.example
