@@ -11,6 +11,9 @@ scripts/**
 **/*.ts
 **/*.tsx
 
+# Maintainer wiki — lives in the repo, not the shipped extension (README stays).
+docs/**
+
 # Source maps (incl. dist/*.map)
 **/*.map
 
