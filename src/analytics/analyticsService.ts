@@ -288,6 +288,14 @@ function parseOtelLine(line: string): { model: string; inputTokens: number; outp
   const found: Record<string, string | number> = {};
   walk(parsed, found);
 
+  // Copilot emits each request's usage in TWO log records: the authoritative per-inference
+  // record (event.name = "gen_ai.client.inference.operation.details", which carries the model)
+  // AND the agent-turn record ("copilot_chat.agent.turn" — same token counts, but NO model).
+  // Counting both DOUBLES every total and produces a junk "unknown" model bucket, so we accept
+  // ONLY the inference record. Aggregate metric exports (scopeMetrics/…) have no event.name and
+  // are skipped here too — the per-inference log record is the single source of truth.
+  if (found['event.name'] !== 'gen_ai.client.inference.operation.details') return null;
+
   const input = num(found['gen_ai.usage.input_tokens']);
   const output = num(found['gen_ai.usage.output_tokens']);
   if (input === 0 && output === 0) return null;
@@ -297,7 +305,7 @@ function parseOtelLine(line: string): { model: string; inputTokens: number; outp
   return { model, inputTokens: input, outputTokens: output, ts };
 }
 
-const WANTED = new Set(['gen_ai.usage.input_tokens', 'gen_ai.usage.output_tokens', 'gen_ai.request.model', 'gen_ai.response.model']);
+const WANTED = new Set(['gen_ai.usage.input_tokens', 'gen_ai.usage.output_tokens', 'gen_ai.request.model', 'gen_ai.response.model', 'event.name']);
 
 function walk(node: unknown, out: Record<string, string | number>): void {
   if (node === null || typeof node !== 'object') return;
@@ -311,6 +319,10 @@ function walk(node: unknown, out: Record<string, string | number>): void {
 
   for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
     if (WANTED.has(k) && (typeof v === 'string' || typeof v === 'number')) out[k] = v;
+    // Real event time. Copilot's log record carries hrTime: [seconds, nanos]; OTLP carries *UnixNano.
+    if (k === 'hrTime' && !out['__ts'] && Array.isArray(v) && v.length === 2 && typeof v[0] === 'number' && typeof v[1] === 'number') {
+      out['__ts'] = isoFrom(v[0] * 1000 + v[1] / 1e6);
+    }
     if ((k === 'timeUnixNano' || k === 'time' || k === 'timestamp') && !out['__ts']) {
       out['__ts'] = isoFrom(v);
     }
