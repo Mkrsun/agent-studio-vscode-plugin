@@ -23,6 +23,7 @@ export const COMMANDS = {
   SHOW_AUTH_STATUS: 'agentStudio.showAuthStatus',
   SHOW_LOGS: 'agentStudio.showLogs',
   ANALYTICS_STATUS: 'agentStudio.analyticsStatus',
+  CHECK_FOR_UPDATES: 'agentStudio.checkForUpdates',
 } as const;
 
 export const CONTEXT_KEYS = {
@@ -47,6 +48,8 @@ export const CONFIG_KEYS = {
   AUTH_REQUIRE_ORG: 'agentStudio.auth.requireOrgMembership',
   EXTENSION_AUTO_UPDATE: 'agentStudio.extensionAutoUpdate',
   EXTENSION_UPDATE_REPO: 'agentStudio.extensionUpdateRepo',
+  EXTENSION_UPDATE_DIR: 'agentStudio.extensionUpdateDir',
+  EXTENSION_UPDATE_BRANCH: 'agentStudio.extensionUpdateBranch',
   EXTENSION_UPDATE_MANIFEST: 'agentStudio.extensionUpdateManifestPath',
   ANALYTICS_REPO: 'agentStudio.analyticsRepo',
   ANALYTICS_ENABLED: 'agentStudio.analytics.enabled',
@@ -58,7 +61,9 @@ export const CONFIG_KEYS = {
 // Environment-variable overrides (env wins over settings → easy CI/ops pointing
 // without touching VS Code settings.json).
 export const ENV = {
-  UPDATE_REPO: 'AGENT_STUDIO_UPDATE_REPO',        // owner/repo for the extension's own VSIX releases
+  UPDATE_REPO: 'AGENT_STUDIO_UPDATE_REPO',        // owner/repo whose update folder holds the extension's VSIX builds
+  UPDATE_DIR: 'AGENT_STUDIO_UPDATE_DIR',          // repo-relative folder the VSIX builds live in (default "updates")
+  UPDATE_BRANCH: 'AGENT_STUDIO_UPDATE_BRANCH',    // branch to read the update folder from (default = repo default branch)
   MARKETPLACE_REPO: 'AGENT_STUDIO_MARKETPLACE_REPO', // owner/repo of a content marketplace (quick single override)
   MARKETPLACES: 'AGENT_STUDIO_MARKETPLACES',      // full multi-marketplace list: "id:Label:owner/repo, …" or JSON array
   ANALYTICS_REPO: 'AGENT_STUDIO_ANALYTICS_REPO',  // owner/repo of the analytics datastore
@@ -66,6 +71,7 @@ export const ENV = {
 } as const;
 
 export const DEFAULT_UPDATE_REPO = 'Mkrsun/agent-studio-vscode-plugin';
+export const DEFAULT_UPDATE_DIR = 'updates';
 
 export const ASSET_TYPE_LABELS: Record<string, string> = {
   skill: 'Skills',

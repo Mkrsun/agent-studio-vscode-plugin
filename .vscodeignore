@@ -4,6 +4,9 @@
 .github/**
 node_modules/**
 
+# Self-update channel: prior .vsix builds live here. Must NOT be packaged inside a .vsix.
+updates/**
+
 # Source — bundled into dist/ by esbuild
 src/**
 webview-ui/**
@@ -23,5 +26,8 @@ tsconfig*.json
 .eslintrc*
 .gitignore
 .vscodeignore
-.env
 .env.example
+# .env is NOT packaged: this repo is PUBLIC, so its .vsix is a public download, and .env names
+# the PRIVATE analytics datastore — shipping it would leak that name. Installs set the submission
+# target via the `agentStudio.analyticsRepo` setting (or AGENT_STUDIO_ANALYTICS_REPO env) instead.
+.env

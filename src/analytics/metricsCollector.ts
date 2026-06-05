@@ -1,8 +1,11 @@
 import * as vscode from 'vscode';
 import { DevIdentity } from './identity';
 import { log, error as logError } from '../services/logger';
+import { logMetricEvent, isTelemetryDebugEnabled } from './eventDebug';
 
 export const METRICS_SCHEMA = 'agent-studio/v1';
+const FLUSH_DEBOUNCE_MS = 1500; // coalesce a burst of events (e.g. an OTel import) into one write
+const SEP = '';
 
 /** A token-usage row from an Agent Studio chat-participant LM call. */
 export interface UsageEvent {
@@ -39,45 +42,67 @@ export interface CopilotEvent {
 export type MetricEvent = UsageEvent | AssetEvent;
 
 /**
- * Appends numbers-only metric rows to a per-dev NDJSON file in the extension's
- * global storage (workspace-independent, so collection works everywhere). The
- * file is later PR'd to the analytics repo verbatim.
+ * Collects numbers-only metrics into a per-dev monthly NDJSON file, AGGREGATED at the source.
  *
- * PRIVACY: rows are keyed by the anonymous `devId` only — never a name, login,
- * or email — and carry counts + coarse tags (asset id, model, language,
- * country). NEVER prompt/response content. Insights, not tracking.
+ * Token rows (Copilot OTel imports + Agent Studio LM calls) are rolled up in memory by
+ * (date × model × country × language × asset) — summing tokens and counting `requests` — so a
+ * firehose of thousands of per-event OTel spans collapses to a handful of rows. Asset lifecycle
+ * events (install/invoke/…) stay individual (low volume; counted per-row downstream). The map is
+ * flushed to disk debounced (and on demand via flushNow), so we write once per burst instead of
+ * re-reading + rewriting the whole file on every event. The file is later PR'd verbatim and the
+ * insights generator re-aggregates it — it never needs per-event granularity.
+ *
+ * PRIVACY: rows are keyed by the anonymous `devId` only — never a name, login, or email — and
+ * carry counts + coarse tags (asset id, model, language, country). NEVER prompt/response content.
  */
 export class MetricsCollector {
+  private rows: Map<string, Record<string, unknown>> | null = null;
+  private activeFile: vscode.Uri | null = null;
+  private activeMonth = '';
+  private flushTimer: ReturnType<typeof setTimeout> | null = null;
+  private dirty = false;
+
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly identity: DevIdentity,
   ) {}
 
   recordUsage(e: Omit<UsageEvent, 'kind'>): Promise<void> {
-    return this.append({ kind: 'usage', ...e });
-  }
-
-  recordAsset(e: Omit<AssetEvent, 'kind'>): Promise<void> {
-    return this.append({ kind: 'asset', ...e });
-  }
-
-  /** Record a Copilot OTel row, preserving its own timestamp/date. */
-  recordCopilot(e: Omit<CopilotEvent, 'kind'>): Promise<void> {
-    return this.appendRow({
-      kind: 'copilot',
-      model: e.model,
-      inputTokens: e.inputTokens,
-      outputTokens: e.outputTokens,
-      ts: e.ts,
-      date: e.ts.slice(0, 10),
+    return this.bumpToken('usage', e.model, e.inputTokens, e.outputTokens, this.dateNow(), {
+      languageId: e.languageId,
+      assetId: e.assetId,
+      assetType: e.assetType,
     });
   }
 
-  /** The per-dev NDJSON file for the current month, e.g. perf/<devId>/2026-06.ndjson. */
-  fileUri(): vscode.Uri {
-    const now = new Date();
-    const month = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
-    return vscode.Uri.joinPath(this.context.globalStorageUri, 'perf', this.identity.devId, `${month}.ndjson`);
+  /** Record a Copilot OTel row, preserving its own date (not "now"). */
+  recordCopilot(e: Omit<CopilotEvent, 'kind'>): Promise<void> {
+    return this.bumpToken('copilot', e.model, e.inputTokens, e.outputTokens, String(e.ts).slice(0, 10), {});
+  }
+
+  async recordAsset(e: Omit<AssetEvent, 'kind'>): Promise<void> {
+    try {
+      await this.ensureLoaded();
+      const ts = new Date().toISOString();
+      const row: Record<string, unknown> = {
+        schema: METRICS_SCHEMA,
+        devId: this.identity.devId,
+        country: this.identity.country,
+        date: ts.slice(0, 10),
+        kind: 'asset',
+        event: e.event,
+        assetId: e.assetId,
+        assetType: e.assetType,
+        ...(e.marketplace ? { marketplace: e.marketplace } : {}),
+        ts,
+      };
+      // Unique key → each lifecycle event is preserved (downstream counts them per-row).
+      this.rows!.set(['a', ts, e.event, e.assetId].join(SEP), row);
+      if (isTelemetryDebugEnabled()) logMetricEvent(row, 'metricsCollector');
+      this.markDirty();
+    } catch (e2) {
+      logError('Failed to record asset metric', e2, 'analytics');
+    }
   }
 
   /** Directory holding all of this dev's monthly files (what auto-submit uploads). */
@@ -85,31 +110,148 @@ export class MetricsCollector {
     return vscode.Uri.joinPath(this.context.globalStorageUri, 'perf', this.identity.devId);
   }
 
-  /** Stamp an event with "now" + identity, then persist. */
-  private append(event: MetricEvent): Promise<void> {
-    const now = new Date().toISOString();
-    return this.appendRow({ ...event, ts: now, date: now.slice(0, 10) });
+  /** Persist any pending aggregates immediately (call before submitting / on shutdown). */
+  async flushNow(): Promise<void> {
+    if (this.dirty) await this.flush();
+    else this.clearTimer();
   }
 
-  /** Persist a row that already carries its own ts/date (e.g. imported Copilot rows). */
-  private async appendRow(partial: Record<string, unknown>): Promise<void> {
-    const row = {
-      schema: METRICS_SCHEMA,
-      devId: this.identity.devId,
-      country: this.identity.country,
-      locale: this.identity.locale,
-      tz: this.identity.timezone,
-      ...partial,
-    };
-    const line = JSON.stringify(row) + '\n';
+  // ── Aggregation internals ─────────────────────────────────────────────────────
+
+  /** Upsert a token row: same (date,model,country,language,asset) → sum tokens, +1 request. */
+  private async bumpToken(
+    kind: 'usage' | 'copilot',
+    model: string,
+    inputTokens: number,
+    outputTokens: number,
+    date: string,
+    tags: { languageId?: string; assetId?: string; assetType?: string },
+  ): Promise<void> {
     try {
-      const uri = this.fileUri();
-      await vscode.workspace.fs.createDirectory(this.devDir());
-      const existing = await this.readIfPresent(uri);
-      await vscode.workspace.fs.writeFile(uri, Buffer.from(existing + line, 'utf8'));
+      await this.ensureLoaded();
+      const languageId = tags.languageId || '';
+      const assetId = tags.assetId || '';
+      const assetType = tags.assetType || '';
+      const m = model || 'unknown';
+      const key = ['t', date, kind, m, assetId, assetType, languageId].join(SEP);
+      const existing = this.rows!.get(key);
+      if (existing) {
+        existing.requests = (existing.requests as number) + 1;
+        existing.inputTokens = (existing.inputTokens as number) + num(inputTokens);
+        existing.outputTokens = (existing.outputTokens as number) + num(outputTokens);
+      } else {
+        this.rows!.set(key, {
+          schema: METRICS_SCHEMA,
+          devId: this.identity.devId,
+          country: this.identity.country,
+          date,
+          kind,
+          model: m,
+          ...(languageId ? { languageId } : {}),
+          ...(assetId ? { assetId } : {}),
+          ...(assetType ? { assetType } : {}),
+          requests: 1,
+          inputTokens: num(inputTokens),
+          outputTokens: num(outputTokens),
+        });
+      }
+      this.markDirty();
     } catch (e) {
-      logError('Failed to record metric', e, 'analytics');
+      logError('Failed to record token metric', e, 'analytics');
     }
+  }
+
+  /** Hydrate the in-memory map from the current month's file (re-aggregating any legacy per-event rows). */
+  private async ensureLoaded(): Promise<void> {
+    const month = this.monthNow();
+    if (this.rows && this.activeMonth === month) return;
+    // Real month rolled over → persist the old month before switching files.
+    if (this.rows && this.activeMonth && this.activeMonth !== month) await this.flush();
+
+    this.activeMonth = month;
+    this.activeFile = vscode.Uri.joinPath(this.devDir(), `${month}.ndjson`);
+    const map = new Map<string, Record<string, unknown>>();
+    for (const line of (await this.readIfPresent(this.activeFile)).split('\n')) {
+      const t = line.trim();
+      if (!t) continue;
+      let r: Record<string, unknown>;
+      try { r = JSON.parse(t); } catch { continue; }
+      this.foldRow(map, r);
+    }
+    this.rows = map;
+  }
+
+  /** Fold an existing on-disk row into the aggregate (so legacy per-event files compact on next write). */
+  private foldRow(map: Map<string, Record<string, unknown>>, r: Record<string, unknown>): void {
+    const schema = typeof r.schema === 'string' ? r.schema : '';
+    const kind = (r.kind as string) || (schema.startsWith('copilot-tokens') ? 'copilot' : '');
+    if (kind === 'copilot' || kind === 'usage') {
+      const date = (r.date as string) || (r.ts ? String(r.ts).slice(0, 10) : '');
+      const model = (r.model as string) || 'unknown';
+      const languageId = (r.languageId as string) || '';
+      const assetId = (r.assetId as string) || '';
+      const assetType = (r.assetType as string) || '';
+      const reqs = typeof r.requests === 'number' && r.requests > 0 ? r.requests : 1;
+      const key = ['t', date, kind, model, assetId, assetType, languageId].join(SEP);
+      const ex = map.get(key);
+      if (ex) {
+        ex.requests = (ex.requests as number) + reqs;
+        ex.inputTokens = (ex.inputTokens as number) + num(r.inputTokens);
+        ex.outputTokens = (ex.outputTokens as number) + num(r.outputTokens);
+      } else {
+        map.set(key, {
+          schema: METRICS_SCHEMA,
+          devId: this.identity.devId,
+          country: (r.country as string) ?? this.identity.country,
+          date,
+          kind,
+          model,
+          ...(languageId ? { languageId } : {}),
+          ...(assetId ? { assetId } : {}),
+          ...(assetType ? { assetType } : {}),
+          requests: reqs,
+          inputTokens: num(r.inputTokens),
+          outputTokens: num(r.outputTokens),
+        });
+      }
+    } else if (kind === 'asset') {
+      const ts = (r.ts as string) || '';
+      map.set(['a', ts, r.event as string, r.assetId as string].join(SEP), r);
+    } else {
+      map.set(['x', map.size].join(SEP), r); // unknown row — preserve verbatim
+    }
+  }
+
+  private async flush(): Promise<void> {
+    this.clearTimer();
+    if (!this.rows || !this.activeFile) return;
+    try {
+      const body = [...this.rows.values()].map((r) => JSON.stringify(r)).join('\n');
+      await vscode.workspace.fs.createDirectory(this.devDir());
+      await vscode.workspace.fs.writeFile(this.activeFile, Buffer.from(body ? body + '\n' : '', 'utf8'));
+      this.dirty = false;
+    } catch (e) {
+      logError('Failed to flush metrics', e, 'analytics');
+    }
+  }
+
+  private markDirty(): void {
+    this.dirty = true;
+    this.clearTimer();
+    this.flushTimer = setTimeout(() => void this.flush(), FLUSH_DEBOUNCE_MS);
+  }
+
+  private clearTimer(): void {
+    if (this.flushTimer) { clearTimeout(this.flushTimer); this.flushTimer = null; }
+  }
+
+  private monthNow(): string {
+    const now = new Date();
+    return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+  }
+
+  private dateNow(): string {
+    return new Date().toISOString().slice(0, 10);
   }
 
   private async readIfPresent(uri: vscode.Uri): Promise<string> {
@@ -119,6 +261,12 @@ export class MetricsCollector {
       return '';
     }
   }
+}
+
+function num(v: unknown): number {
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v === 'string') { const n = parseInt(v, 10); return Number.isFinite(n) ? n : 0; }
+  return 0;
 }
 
 /** Count tokens for the prompt; falls back to a chars/4 estimate if the model can't. */

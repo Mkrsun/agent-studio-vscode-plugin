@@ -109,7 +109,7 @@ export class MarketplaceService implements vscode.Disposable {
     }
     const override = this._config.getMarketplaceRepoOverride();
     if (override) {
-      return [{ id: 'agentic-studio', label: 'Agentic Studio Assets', repo: override }];
+      return [{ id: 'agentic-studio', label: 'Regional', repo: override }];
     }
     // Settings list — may be hierarchical (entries with `children`). Flatten into
     // sibling descriptors carrying `parent`, so the Inspector can nest them.

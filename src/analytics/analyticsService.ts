@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as os from 'os';
 import * as path from 'path';
+import * as fs from 'fs';
 import { ConfigService } from '../services/configService';
 import { CONFIG_KEYS } from '../constants';
 import { resolveIdentity, DevIdentity } from './identity';
@@ -14,6 +15,8 @@ const NOTICE_KEY = 'agentStudio.analytics.noticeShown';
 const LAST_SUBMIT_KEY = 'agentStudio.analytics.lastSubmit';
 const OTEL_OFFSET_KEY = 'agentStudio.analytics.otelOffset';
 const COPILOT_OTEL_SETTING = 'github.copilot.chat.otel.outfile';
+const COPILOT_OTEL_ENABLED_SETTING = 'github.copilot.chat.otel.enabled';
+const COPILOT_OTEL_EXPORTER_SETTING = 'github.copilot.chat.otel.exporterType';
 
 /**
  * Owns the anonymous-analytics pipeline: collect numbers-only metrics locally,
@@ -66,6 +69,7 @@ export class AnalyticsService implements vscode.Disposable {
 
   dispose(): void {
     if (this.timer) clearInterval(this.timer);
+    void this.collector?.flushNow(); // persist any pending aggregates on shutdown
   }
 
   // ── Recording (called from across the extension) ────────────────────────────
@@ -184,6 +188,7 @@ export class AnalyticsService implements vscode.Disposable {
   }
 
   private async collectFiles(): Promise<UsageFile[]> {
+    await this.collector!.flushNow(); // make sure pending in-memory aggregates are on disk first
     const dir = this.collector!.devDir();
     let entries: [string, vscode.FileType][];
     try {
@@ -218,54 +223,119 @@ export class AnalyticsService implements vscode.Disposable {
     }
   }
 
-  /** Point Copilot's OTel export at a known file so real token counts flow. */
+  /**
+   * Point Copilot's OTel export at a known file so real token counts flow.
+   *
+   * Writing the outfile path alone is NOT enough: per Copilot's OTel docs, OTel
+   * only activates when `otel.enabled` (or an OTLP endpoint / env flag) is set,
+   * and output only reaches a file when `otel.exporterType` is "file" (the
+   * default is "otlp-http", which POSTs to a collector instead). So we set all
+   * three together. We never clobber a user who already configured their own
+   * exporter (e.g. an OTLP endpoint to their team's collector) — in that case we
+   * just adopt their outfile if they happen to also write one, and otherwise
+   * leave them alone.
+   */
   private async enableCopilotOtel(): Promise<void> {
     if (!this.config.isAutoEnableCopilotOtel()) {
       this.otelFile = '';
       return;
     }
     const cfg = vscode.workspace.getConfiguration();
-    const current = cfg.get<string>(COPILOT_OTEL_SETTING);
-    if (current) {
-      this.otelFile = current;
+
+    // Respect an existing user setup, but ONLY a real user override — `get()`
+    // folds in Copilot's package default ("otlp-http"), so we must `inspect()`
+    // and look at the explicit user/workspace value. If the user deliberately
+    // chose a non-file exporter (e.g. their own OTLP collector), don't hijack it
+    // — just tail their file if they have one, otherwise stay out of the way.
+    const exporterInspect = cfg.inspect<string>(COPILOT_OTEL_EXPORTER_SETTING);
+    const userExporter =
+      exporterInspect?.workspaceFolderValue ?? exporterInspect?.workspaceValue ?? exporterInspect?.globalValue;
+    const existingOutfile = cfg.get<string>(COPILOT_OTEL_SETTING);
+    if (userExporter && userExporter !== 'file') {
+      this.otelFile = existingOutfile || '';
+      log(`Copilot OTel already configured by user (exporter=${userExporter}); not overriding.`, 'analytics');
       return;
     }
-    const target = path.join(os.homedir(), '.copilot-otel', 'usage.jsonl');
+
+    const target = existingOutfile || path.join(os.homedir(), '.copilot-otel', 'usage.jsonl');
     try {
       // Create the directory so Copilot can write into it (it may not mkdir -p).
       await vscode.workspace.fs.createDirectory(vscode.Uri.file(path.dirname(target)));
+      // All three are required for file-based token export to actually flow.
+      await cfg.update(COPILOT_OTEL_ENABLED_SETTING, true, vscode.ConfigurationTarget.Global);
+      await cfg.update(COPILOT_OTEL_EXPORTER_SETTING, 'file', vscode.ConfigurationTarget.Global);
       await cfg.update(COPILOT_OTEL_SETTING, target, vscode.ConfigurationTarget.Global);
       this.otelFile = target;
-      log(`Enabled Copilot OTel token export → ${target}`, 'analytics');
-      log('NOTE: Copilot may only start writing after a window reload, and only if your', 'analytics');
+      log(`Enabled Copilot OTel file export → ${target}`, 'analytics');
+      log('NOTE: Copilot only starts writing after a window reload, and only if your', 'analytics');
       log('      Copilot build supports this export. Run "Agent Studio: Analytics Status" to check.', 'analytics');
     } catch (e) {
       logWarn('Could not enable Copilot OTel export (continuing without true token data).', 'analytics');
     }
   }
 
-  /** Import NEW Copilot OTel rows (by byte offset) into the collector. */
+  /**
+   * Import NEW Copilot OTel rows into the collector, reading ONLY the bytes
+   * appended since last time (a true byte offset) rather than loading the whole
+   * file. The export grows unbounded — Copilot owns the file and holds it open,
+   * so we must NOT truncate it — and a full read would get costly over weeks. We
+   * advance the offset only up to the last complete line, leaving any half-written
+   * trailing line for the next tick, and reset to 0 if the file shrank (rotated).
+   */
   private async importCopilotOtel(): Promise<void> {
     if (!this.otelFile || !this.collector) return;
-    let text: string;
+
+    let size: number;
     try {
-      text = Buffer.from(await vscode.workspace.fs.readFile(vscode.Uri.file(this.otelFile))).toString('utf8');
+      size = (await vscode.workspace.fs.stat(vscode.Uri.file(this.otelFile))).size;
     } catch {
       return; // file not created by Copilot yet
     }
-    const offset = this.context.globalState.get<number>(OTEL_OFFSET_KEY) ?? 0;
-    if (text.length <= offset) return;
+
+    let offset = this.context.globalState.get<number>(OTEL_OFFSET_KEY) ?? 0;
+    if (offset > size) offset = 0; // file rotated/truncated → re-read from the start
+    if (size <= offset) return; // nothing new appended
+
+    let buf: Buffer;
+    try {
+      buf = await readFileRange(this.otelFile, offset, size);
+    } catch {
+      logWarn('Could not read Copilot OTel file range; will retry next tick.', 'analytics');
+      return;
+    }
+
+    // Consume only up to the last newline; a trailing partial line means Copilot
+    // is mid-write, so we leave those bytes for the next tick.
+    const lastNl = buf.lastIndexOf(0x0a); // '\n'
+    if (lastNl < 0) return; // no complete line in the new bytes yet
+    const consumed = lastNl + 1;
 
     let imported = 0;
-    for (const line of text.slice(offset).split(/\r?\n/)) {
+    for (const line of buf.subarray(0, consumed).toString('utf8').split(/\r?\n/)) {
       const row = parseOtelLine(line);
       if (row) {
         await this.collector.recordCopilot(row);
         imported++;
       }
     }
-    await this.context.globalState.update(OTEL_OFFSET_KEY, text.length);
+    // Persist the aggregated batch BEFORE advancing the offset, so a crash can only ever cause a
+    // re-import (idempotent-ish) — never a silently-dropped, already-consumed batch.
+    await this.collector.flushNow();
+    await this.context.globalState.update(OTEL_OFFSET_KEY, offset + consumed);
     if (imported > 0) log(`Imported ${imported} Copilot token row(s) from OTel.`, 'analytics');
+  }
+}
+
+/** Read bytes [start, end) of a file without pulling the rest into memory. */
+async function readFileRange(file: string, start: number, end: number): Promise<Buffer> {
+  const length = end - start;
+  const fd = await fs.promises.open(file, 'r');
+  try {
+    const buf = Buffer.alloc(length);
+    const { bytesRead } = await fd.read(buf, 0, length, start);
+    return bytesRead === length ? buf : buf.subarray(0, bytesRead);
+  } finally {
+    await fd.close();
   }
 }
 

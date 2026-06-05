@@ -45,21 +45,23 @@ export class InspectorProvider implements vscode.TreeDataProvider<InspectorNode>
   }
 
   getChildren(element?: InspectorNode): InspectorNode[] {
-    // ── Root: top-level marketplace groups (those without a parent), then the
-    //          Plugins and MCP Servers sections.
+    // ── Root: only the top-level marketplace groups (those without a parent).
+    //          The Plugins and MCP Servers sections now live INSIDE each
+    //          top-level group, not as siblings at the root.
     if (!element) {
       const all = this.marketplaceService.getMarketplaces();
       const topLevel = all.filter((m) => !m.descriptor.parent);
-      const marketplaceNodes = topLevel.map(
-        (m) => new MarketplaceGroupNode(m, this._hasChildren(m.descriptor.id)),
-      );
-      return [...marketplaceNodes, new PluginCategoryNode(), new McpCategoryNode()];
+      // Top-level groups always expand: they always hold the Plugins + MCP sections.
+      return topLevel.map((m) => new MarketplaceGroupNode(m, true));
     }
 
-    // ── Marketplace group → nested child marketplaces (if any) followed by this
-    //    group's own asset-type categories.
+    // ── Marketplace group → nested child marketplaces (if any), this group's own
+    //    asset-type categories, and — for top-level groups — the Plugins and MCP
+    //    Servers sections nested inside.
     if (element instanceof MarketplaceGroupNode) {
       const { marketplace } = element;
+      const isTopLevel = !marketplace.descriptor.parent;
+
       const childGroups = this.marketplaceService
         .getMarketplaces()
         .filter((m) => m.descriptor.parent === marketplace.descriptor.id)
@@ -70,7 +72,11 @@ export class InspectorProvider implements vscode.TreeDataProvider<InspectorNode>
           ? ASSET_TYPES.map((type) => new CategoryNode(type as AssetType, marketplace.descriptor.id))
           : [];
 
-      return [...childGroups, ...ownCategories];
+      const globalSections = isTopLevel
+        ? [new PluginCategoryNode(), new McpCategoryNode()]
+        : [];
+
+      return [...childGroups, ...ownCategories, ...globalSections];
     }
 
     // ── Category node → individual assets (filtered by marketplaceId when set).

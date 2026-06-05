@@ -14,6 +14,7 @@ import { MarketplaceService } from '../marketplace/marketplaceService';
 import { autoUpdateAssets } from '../marketplace/assetAutoUpdate';
 import { AnalyticsService } from '../analytics/analyticsService';
 import { initMetrics } from '../analytics/metrics';
+import { setTelemetryDebugEnabled, isTelemetryDebugEnabled } from '../analytics/eventDebug';
 import { COMMANDS, VIEW_IDS } from '../constants';
 import { AuthService } from './authService';
 import { enforceLatestVersion } from './updateChecker';
@@ -97,6 +98,13 @@ class AuthenticatedSurface {
     await enforceLatestVersion(this.context, currentVersion, this.config, { getToken: this.getToken });
   }
 
+  /** Manual "Check for Updates" — bypasses the daily throttle and reports when already current. */
+  private async checkForUpdates(): Promise<void> {
+    const currentVersion =
+      (this.context.extension?.packageJSON as { version?: string } | undefined)?.version ?? '0.0.0';
+    await enforceLatestVersion(this.context, currentVersion, this.config, { getToken: this.getToken, force: true });
+  }
+
   private async loadAndAutoUpdate(): Promise<void> {
     await this.assets.loadAll();
     const updated = this.config.isAssetAutoUpdate()
@@ -130,6 +138,8 @@ class AuthenticatedSurface {
       vscode.commands.registerCommand(COMMANDS.EXPORT_TO_COPILOT, () => this.exportToCopilot()),
       vscode.commands.registerCommand(COMMANDS.SUBMIT_USAGE, () => this.analytics.submitNow()),
       vscode.commands.registerCommand(COMMANDS.ANALYTICS_STATUS, () => this.analytics.showStatus()),
+      vscode.commands.registerCommand(COMMANDS.CHECK_FOR_UPDATES, () => this.checkForUpdates()),
+      vscode.commands.registerCommand('agentStudio.toggleTelemetryDebug', () => this.toggleTelemetryDebug()),
       vscode.commands.registerCommand(COMMANDS.INSTALL_PLUGIN, () => this.installPlugin()),
       vscode.commands.registerCommand(COMMANDS.UNINSTALL_PLUGIN, (node?: InstalledPluginNode) => this.uninstallPlugin(node)),
     ];
@@ -177,6 +187,14 @@ class AuthenticatedSurface {
     await this.plugins.uninstall(pluginName);
     vscode.window.showInformationMessage(
       `🗑 "${pluginName}" uninstalled. The terminal ran \`copilot plugin uninstall ${pluginName}\`.`,
+    );
+  }
+
+  private toggleTelemetryDebug(): void {
+    const next = !isTelemetryDebugEnabled();
+    setTelemetryDebugEnabled(next);
+    vscode.window.showInformationMessage(
+      `Agent Studio: telemetry debug ${next ? 'enabled' : 'disabled'}. Check the Agent Studio output channel for metric events.`,
     );
   }
 }

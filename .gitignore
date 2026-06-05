@@ -2,5 +2,7 @@ node_modules/
 dist/
 out/
 *.vsix
+# …except the published update channel: VSIX builds committed here ARE the self-update source.
+!updates/*.vsix
 .env
 .DS_Store
