@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ConfigService } from '../services/configService';
 import { CONFIG_KEYS } from '../constants';
+import { log, warn as logWarn } from '../services/logger';
 import { MarketplaceClient } from './marketplaceClient';
 import {
   MarketplaceDescriptor,
@@ -108,16 +109,23 @@ export class MarketplaceService implements vscode.Disposable {
     }
     const override = this._config.getMarketplaceRepoOverride();
     if (override) {
-      return [{ id: 'agentic-studio', label: 'Agentic Studio Assets', repo: override }];
+      return [{ id: 'agentic-studio', label: 'Regional', repo: override }];
     }
-    return (
-      this._config.get<MarketplaceDescriptor[]>(CONFIG_KEYS.MARKETPLACES) ?? []
-    );
+    // Settings list — may be hierarchical (entries with `children`). Flatten into
+    // sibling descriptors carrying `parent`, so the Inspector can nest them.
+    const configured = this._config.get<MarketplaceDescriptor[]>(CONFIG_KEYS.MARKETPLACES) ?? [];
+    return flattenMarketplaces(configured);
   }
 
   private async _loadOne(descriptor: MarketplaceDescriptor): Promise<ResolvedMarketplace> {
+    const src = descriptor.repo ?? descriptor.localPath ?? '(group)';
+    // A grouping-only descriptor (parent with no repo) has nothing to fetch.
+    if (!descriptor.repo && !descriptor.localPath) {
+      return { descriptor, status: 'ready', assets: [], fetchedAt: Date.now() };
+    }
     const result = await this._client.fetchRegistry(descriptor);
     if (!result.ok) {
+      logWarn(`Marketplace "${descriptor.id}" (${src}): ${result.status}`, 'marketplace');
       return {
         descriptor,
         status: result.status,
@@ -125,6 +133,7 @@ export class MarketplaceService implements vscode.Disposable {
         errorMessage: this._statusMessage(result.status, descriptor),
       };
     }
+    log(`Marketplace "${descriptor.id}" (${src}): ready, ${result.registry.assets.length} asset(s)`, 'marketplace');
     return {
       descriptor,
       status: 'ready',
@@ -147,4 +156,30 @@ export class MarketplaceService implements vscode.Disposable {
         return `registry.json in ${src} is invalid. Contact the marketplace maintainer.`;
     }
   }
+}
+
+/**
+ * Flatten a (possibly nested) marketplace config into a flat descriptor list,
+ * setting `parent` on each child from its container's id. Supports arbitrary
+ * depth. A parent entry keeps its own `repo`/`localPath` (if any) and also gets
+ * its children hoisted as siblings tagged with `parent`.
+ *
+ * Example input (one entry with children) → output (5 descriptors):
+ *   { id:'regional', repo:'Org/regional', children:[ {id:'chile',repo:'Org/chile'}, … ] }
+ *   ⇒ regional, chile(parent=regional), brasil(parent=regional), …
+ */
+export function flattenMarketplaces(
+  entries: MarketplaceDescriptor[],
+  parent?: string,
+): MarketplaceDescriptor[] {
+  const out: MarketplaceDescriptor[] = [];
+  for (const e of entries ?? []) {
+    if (!e || !e.id) continue;
+    const { children, ...rest } = e;
+    out.push({ ...rest, ...(parent ? { parent } : {}) });
+    if (Array.isArray(children) && children.length > 0) {
+      out.push(...flattenMarketplaces(children, e.id));
+    }
+  }
+  return out;
 }

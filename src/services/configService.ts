@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { CONFIG_KEYS, ENV, DEFAULT_UPDATE_REPO } from '../constants';
+import { CONFIG_KEYS, ENV, DEFAULT_UPDATE_REPO, DEFAULT_UPDATE_DIR } from '../constants';
 
 /** A marketplace descriptor parsed from env / settings: id + label + GitHub repo. */
 export interface EnvMarketplace {
@@ -83,12 +83,30 @@ export class ConfigService {
   // Resolution order is always: ENV VAR  →  VS Code setting  →  built-in default.
   // (env wins so ops/CI can point a build at different repos without editing settings.)
 
-  /** owner/repo whose GitHub Releases hold the extension's `.vsix` (self-update source). */
+  /** owner/repo whose update folder holds the extension's `.vsix` builds (self-update source). */
   getExtensionUpdateRepo(): string {
     return (
       process.env[ENV.UPDATE_REPO] ||
       this.get<string>(CONFIG_KEYS.EXTENSION_UPDATE_REPO) ||
       DEFAULT_UPDATE_REPO
+    );
+  }
+
+  /** Repo-relative folder the `.vsix` builds live in (e.g. "updates"). */
+  getExtensionUpdateDir(): string {
+    return (
+      process.env[ENV.UPDATE_DIR] ||
+      this.get<string>(CONFIG_KEYS.EXTENSION_UPDATE_DIR) ||
+      DEFAULT_UPDATE_DIR
+    ).replace(/^\/+|\/+$/g, '');
+  }
+
+  /** Branch to read the update folder from. Empty = the repo's default branch. */
+  getExtensionUpdateBranch(): string {
+    return (
+      process.env[ENV.UPDATE_BRANCH] ||
+      this.get<string>(CONFIG_KEYS.EXTENSION_UPDATE_BRANCH) ||
+      ''
     );
   }
 
@@ -147,6 +165,28 @@ export class ConfigService {
   /** When true (default), installed assets auto-update to a newer registry version on catalog refresh. */
   isAssetAutoUpdate(): boolean {
     return this.get<boolean>(CONFIG_KEYS.ASSET_AUTO_UPDATE) ?? true;
+  }
+
+  // ── Anonymous analytics (auto / opt-out) ────────────────────────────────────
+
+  /** Master switch for anonymous metric collection. Default ON (opt-out). */
+  isAnalyticsEnabled(): boolean {
+    return this.get<boolean>(CONFIG_KEYS.ANALYTICS_ENABLED) ?? true;
+  }
+
+  /** Auto-PR collected metrics to the analytics repo (throttled daily). Default ON. */
+  isAnalyticsAutoSubmit(): boolean {
+    return this.get<boolean>(CONFIG_KEYS.ANALYTICS_AUTO_SUBMIT) ?? true;
+  }
+
+  /**
+   * Default ON. GitHub Copilot Chat exposes a local OTel file export; enabling
+   * this sets `otel.enabled` + `otel.exporterType=file` + `otel.outfile` so real
+   * token counts flow into a file we tail. Respects a user's existing exporter
+   * setup (e.g. their own OTLP endpoint) — see AnalyticsService.enableCopilotOtel.
+   */
+  isAutoEnableCopilotOtel(): boolean {
+    return this.get<boolean>(CONFIG_KEYS.ANALYTICS_AUTO_OTEL) ?? true;
   }
 }
 

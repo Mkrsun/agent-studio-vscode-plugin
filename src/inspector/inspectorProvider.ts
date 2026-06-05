@@ -45,24 +45,38 @@ export class InspectorProvider implements vscode.TreeDataProvider<InspectorNode>
   }
 
   getChildren(element?: InspectorNode): InspectorNode[] {
-    // ── Root: one MarketplaceGroupNode per configured marketplace,
-    //          then Plugins and MCP Servers sections.
+    // ── Root: only the top-level marketplace groups (those without a parent).
+    //          The Plugins and MCP Servers sections now live INSIDE each
+    //          top-level group, not as siblings at the root.
     if (!element) {
-      const marketplaceNodes = this.marketplaceService
-        .getMarketplaces()
-        .map((m) => new MarketplaceGroupNode(m));
-
-      return [...marketplaceNodes, new PluginCategoryNode(), new McpCategoryNode()];
+      const all = this.marketplaceService.getMarketplaces();
+      const topLevel = all.filter((m) => !m.descriptor.parent);
+      // Top-level groups always expand: they always hold the Plugins + MCP sections.
+      return topLevel.map((m) => new MarketplaceGroupNode(m, true));
     }
 
-    // ── Marketplace group → asset-type categories scoped to that marketplace.
+    // ── Marketplace group → nested child marketplaces (if any), this group's own
+    //    asset-type categories, and — for top-level groups — the Plugins and MCP
+    //    Servers sections nested inside.
     if (element instanceof MarketplaceGroupNode) {
       const { marketplace } = element;
-      if (marketplace.status !== 'ready' || marketplace.assets.length === 0) return [];
+      const isTopLevel = !marketplace.descriptor.parent;
 
-      return ASSET_TYPES.map(
-        (type) => new CategoryNode(type as AssetType, marketplace.descriptor.id),
-      );
+      const childGroups = this.marketplaceService
+        .getMarketplaces()
+        .filter((m) => m.descriptor.parent === marketplace.descriptor.id)
+        .map((m) => new MarketplaceGroupNode(m, this._hasChildren(m.descriptor.id)));
+
+      const ownCategories =
+        marketplace.status === 'ready' && marketplace.assets.length > 0
+          ? ASSET_TYPES.map((type) => new CategoryNode(type as AssetType, marketplace.descriptor.id))
+          : [];
+
+      const globalSections = isTopLevel
+        ? [new PluginCategoryNode(), new McpCategoryNode()]
+        : [];
+
+      return [...childGroups, ...ownCategories, ...globalSections];
     }
 
     // ── Category node → individual assets (filtered by marketplaceId when set).
@@ -106,5 +120,10 @@ export class InspectorProvider implements vscode.TreeDataProvider<InspectorNode>
 
   getParent(): undefined {
     return undefined;
+  }
+
+  /** True if any configured marketplace declares `parent === id`. */
+  private _hasChildren(id: string): boolean {
+    return this.marketplaceService.getMarketplaces().some((m) => m.descriptor.parent === id);
   }
 }

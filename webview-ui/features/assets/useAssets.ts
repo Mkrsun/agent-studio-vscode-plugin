@@ -22,7 +22,7 @@ function reducer(s: State, a: Action): State {
   }
 }
 
-const DEFAULT_STATE: AssetState = { installed: false, hasUpdate: false };
+const DEFAULT_STATE: AssetState = { installed: false, hasUpdate: false, autoUpdate: false };
 
 export interface AssetsApi {
   catalog: CatalogAsset[];
@@ -31,6 +31,7 @@ export interface AssetsApi {
   install: (id: string) => void;
   update: (id: string) => void;
   uninstall: (id: string) => void;
+  setAutoUpdate: (id: string, enabled: boolean) => void;
   preview: (id: string) => void;
   filterChange: (query: string, assetType: string) => void;
 }
@@ -49,6 +50,7 @@ export function useAssets(): AssetsApi {
           state: {
             installed: msg.installed,
             hasUpdate: msg.hasUpdate,
+            autoUpdate: msg.autoUpdate,
             installedVersion: msg.installedVersion,
             availableVersion: msg.availableVersion,
           },
@@ -64,19 +66,8 @@ export function useAssets(): AssetsApi {
     install: (id) => post({ type: 'marketplace:install', assetId: id }),
     update: (id) => post({ type: 'marketplace:update', assetId: id }),
     uninstall: (id) => post({ type: 'marketplace:uninstall', assetId: id }),
+    setAutoUpdate: (id, enabled) => post({ type: 'marketplace:setAutoUpdate', assetId: id, enabled }),
     preview: (id) => post({ type: 'marketplace:preview', assetId: id }),
     filterChange: (query, assetType) => post({ type: 'marketplace:filterChange', query, assetType }),
   };
-}
-
-/** Button appearance + action from asset state: Install → Installed → Update. */
-export function assetButton(s: AssetState): {
-  variant: 'primary' | 'success' | 'warning';
-  label: string;
-  title: string;
-  action: 'install' | 'uninstall' | 'update';
-} {
-  if (s.hasUpdate) return { variant: 'warning', label: '↑ Update', title: `Update to v${s.availableVersion ?? ''}`, action: 'update' };
-  if (s.installed) return { variant: 'success', label: '✓ Installed', title: 'Uninstall from .github/', action: 'uninstall' };
-  return { variant: 'primary', label: '↓ Install', title: 'Install to .github/', action: 'install' };
 }
